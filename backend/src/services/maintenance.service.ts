@@ -1,13 +1,14 @@
 import { MaintenanceRecord, Equipment } from '../domain/types.js';
 import { IMaintenanceRepository, IEquipmentRepository, IShiftRepository } from '../repositories/interfaces.js';
 import { AuditService } from './audit.service.js';
+import { NotFoundError, ValidationError } from '../core/errors/app-error.js';
 
 export class MaintenanceService {
   constructor(
-    private maintenanceRepo: IMaintenanceRepository,
-    private equipmentRepo: IEquipmentRepository,
-    private shiftRepo: IShiftRepository,
-    private auditService?: AuditService
+    private readonly maintenanceRepo: IMaintenanceRepository,
+    private readonly equipmentRepo: IEquipmentRepository,
+    private readonly shiftRepo: IShiftRepository,
+    private readonly auditService?: AuditService
   ) {}
 
   async getAllMaintenanceRecords(): Promise<MaintenanceRecord[]> {
@@ -31,15 +32,15 @@ export class MaintenanceService {
   }): Promise<{ equipment: Equipment; record: MaintenanceRecord; restoredAssignmentsCount: number }> {
     const equipment = await this.equipmentRepo.findById(data.equipment_id);
     if (!equipment) {
-      throw new Error(`Equipo con ID ${data.equipment_id} no encontrado.`);
+      throw new NotFoundError('Equipo minero', data.equipment_id);
     }
 
     if (!data.performed_by || data.performed_by.trim().length === 0) {
-      throw new Error('El nombre del responsable de mantenimiento es obligatorio.');
+      throw new ValidationError('El nombre del responsable de mantenimiento es obligatorio.');
     }
 
     if (!data.notes || data.notes.trim().length === 0) {
-      throw new Error('Las observaciones del mantenimiento son obligatorias para la trazabilidad.');
+      throw new ValidationError('Las observaciones del mantenimiento son obligatorias para la trazabilidad.');
     }
 
     // Horómetro real al momento del servicio
@@ -48,7 +49,9 @@ export class MaintenanceService {
       : equipment.horometer;
 
     if (horometerAtPm < equipment.last_maintenance_horometer) {
-      throw new Error(`El horómetro de mantenimiento (${horometerAtPm}) no puede ser menor al del último mantenimiento (${equipment.last_maintenance_horometer}).`);
+      throw new ValidationError(
+        `El horómetro de mantenimiento (${horometerAtPm}) no puede ser menor al del último mantenimiento (${equipment.last_maintenance_horometer}).`
+      );
     }
 
     // 1. Registrar en el historial de mantenimiento

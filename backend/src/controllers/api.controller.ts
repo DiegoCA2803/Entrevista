@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { EquipmentService } from '../services/equipment.service.js';
 import { OperatorService } from '../services/operator.service.js';
 import { ShiftService } from '../services/shift.service.js';
@@ -8,110 +8,112 @@ import { AuditService } from '../services/audit.service.js';
 import { ResilientExecutor } from '../resilience/resilient-executor.js';
 import { seedDatabase } from '../seeds/seed.js';
 import { AppRepositories } from '../repositories/db.js';
+import { HTTP_STATUS } from '../core/constants/index.js';
+import { NotFoundError } from '../core/errors/app-error.js';
 
 export class ApiController {
   constructor(
-    private equipmentService: EquipmentService,
-    private operatorService: OperatorService,
-    private shiftService: ShiftService,
-    private maintenanceService: MaintenanceService,
-    private projectionService: ProjectionService,
-    private auditService: AuditService,
-    private repos: AppRepositories
+    private readonly equipmentService: EquipmentService,
+    private readonly operatorService: OperatorService,
+    private readonly shiftService: ShiftService,
+    private readonly maintenanceService: MaintenanceService,
+    private readonly projectionService: ProjectionService,
+    private readonly auditService: AuditService,
+    private readonly repos: AppRepositories
   ) {}
 
   // ----------------------------------------------------
   // EQUIPOS
   // ----------------------------------------------------
-  getAllEquipment = async (req: Request, res: Response) => {
+  getAllEquipment = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const equipment = await this.equipmentService.getAllEquipment();
-      return res.json({ success: true, data: equipment });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.OK).json({ success: true, data: equipment });
+    } catch (err) {
+      next(err);
     }
   };
 
-  getEquipmentById = async (req: Request, res: Response) => {
+  getEquipmentById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const eq = await this.equipmentService.getEquipmentById(String(req.params.id));
-      if (!eq) return res.status(404).json({ success: false, error: 'Equipo no encontrado' });
-      return res.json({ success: true, data: eq });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      if (!eq) throw new NotFoundError('Equipo minero', req.params.id as string);
+      res.status(HTTP_STATUS.OK).json({ success: true, data: eq });
+    } catch (err) {
+      next(err);
     }
   };
 
-  createEquipment = async (req: Request, res: Response) => {
+  createEquipment = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const eq = await this.equipmentService.createEquipment(req.body);
-      return res.status(201).json({ success: true, data: eq });
-    } catch (err: any) {
-      return res.status(400).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.CREATED).json({ success: true, data: eq });
+    } catch (err) {
+      next(err);
     }
   };
 
   // ----------------------------------------------------
   // OPERADORES
   // ----------------------------------------------------
-  getAllOperators = async (req: Request, res: Response) => {
+  getAllOperators = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const operators = await this.operatorService.getAllOperators();
-      return res.json({ success: true, data: operators });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.OK).json({ success: true, data: operators });
+    } catch (err) {
+      next(err);
     }
   };
 
-  createOperator = async (req: Request, res: Response) => {
+  createOperator = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const op = await this.operatorService.createOperator(req.body);
-      return res.status(201).json({ success: true, data: op });
-    } catch (err: any) {
-      return res.status(400).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.CREATED).json({ success: true, data: op });
+    } catch (err) {
+      next(err);
     }
   };
 
-  addCertification = async (req: Request, res: Response) => {
+  addCertification = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const cert = await this.operatorService.addCertification({
         operator_id: String(req.params.id),
         ...req.body
       });
-      return res.status(201).json({ success: true, data: cert });
-    } catch (err: any) {
-      return res.status(400).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.CREATED).json({ success: true, data: cert });
+    } catch (err) {
+      next(err);
     }
   };
 
   // ----------------------------------------------------
   // TURNOS Y ASIGNACIONES
   // ----------------------------------------------------
-  getAllShifts = async (req: Request, res: Response) => {
+  getAllShifts = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const shifts = await this.shiftService.getAllShifts();
-      return res.json({ success: true, data: shifts });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.OK).json({ success: true, data: shifts });
+    } catch (err) {
+      next(err);
     }
   };
 
-  getShiftById = async (req: Request, res: Response) => {
+  getShiftById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const shift = await this.shiftService.getShiftById(String(req.params.id));
-      if (!shift) return res.status(404).json({ success: false, error: 'Turno no encontrado' });
-      return res.json({ success: true, data: shift });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      if (!shift) throw new NotFoundError('Turno minero', req.params.id as string);
+      res.status(HTTP_STATUS.OK).json({ success: true, data: shift });
+    } catch (err) {
+      next(err);
     }
   };
 
-  createShift = async (req: Request, res: Response) => {
+  createShift = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const shift = await this.shiftService.createShift(req.body);
-      return res.status(201).json({ success: true, data: shift });
-    } catch (err: any) {
-      return res.status(400).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.CREATED).json({ success: true, data: shift });
+    } catch (err) {
+      next(err);
     }
   };
 
@@ -119,14 +121,14 @@ export class ApiController {
    * Endpoint de pre-validación de asignaciones (Regla 11)
    * Devuelve TODAS las razones de incumplimiento sin persistir cambios.
    */
-  validateAssignment = async (req: Request, res: Response) => {
+  validateAssignment = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { equipment_id, operator_id } = req.body;
       const shiftId = String(req.params.id);
       const validation = await this.shiftService.validateAssignment(shiftId, equipment_id, operator_id);
-      return res.json({ success: true, data: validation });
-    } catch (err: any) {
-      return res.status(400).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.OK).json({ success: true, data: validation });
+    } catch (err) {
+      next(err);
     }
   };
 
@@ -134,7 +136,7 @@ export class ApiController {
    * Endpoint de creación de asignación.
    * Maneja excepciones de supervisor y garantía de concurrencia.
    */
-  createAssignment = async (req: Request, res: Response) => {
+  createAssignment = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { equipment_id, operator_id, is_override, override_by, override_reason } = req.body;
       const shiftId = String(req.params.id);
@@ -148,28 +150,16 @@ export class ApiController {
         override_reason
       });
 
-      return res.status(201).json({ success: true, data: assignment });
-    } catch (err: any) {
-      // Si fue una colisión de concurrencia o unicidad
-      if (err.message.includes('unicidad') || err.message.includes('duplicate') || err.message.includes('uq_')) {
-        return res.status(409).json({
-          success: false,
-          error: 'Conflicto de concurrencia: El recurso ya fue asignado en este turno.',
-          detail: err.message
-        });
-      }
-
-      return res.status(422).json({
-        success: false,
-        error: err.message
-      });
+      res.status(HTTP_STATUS.CREATED).json({ success: true, data: assignment });
+    } catch (err) {
+      next(err);
     }
   };
 
   /**
    * Cierre de turno (Regla 10 y Decisión 1)
    */
-  closeShift = async (req: Request, res: Response) => {
+  closeShift = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { actual_duration_hours, closed_by, notes } = req.body;
       const shiftId = String(req.params.id);
@@ -181,78 +171,78 @@ export class ApiController {
         notes
       });
 
-      return res.json({ success: true, data: result });
-    } catch (err: any) {
-      return res.status(400).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.OK).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
     }
   };
 
   // ----------------------------------------------------
   // MANTENIMIENTO
   // ----------------------------------------------------
-  getAllMaintenance = async (req: Request, res: Response) => {
+  getAllMaintenance = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const records = await this.maintenanceService.getAllMaintenanceRecords();
-      return res.json({ success: true, data: records });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.OK).json({ success: true, data: records });
+    } catch (err) {
+      next(err);
     }
   };
 
-  registerMaintenance = async (req: Request, res: Response) => {
+  registerMaintenance = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const result = await this.maintenanceService.registerMaintenance(req.body);
-      return res.status(201).json({ success: true, data: result });
-    } catch (err: any) {
-      return res.status(400).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.CREATED).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
     }
   };
 
   // ----------------------------------------------------
   // PROYECCIÓN A 7 DÍAS (Regla 12 + Degradación Elegante)
   // ----------------------------------------------------
-  get7DayProjection = async (req: Request, res: Response) => {
+  get7DayProjection = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const referenceDate = req.query.reference_date as string | undefined;
       const result = await this.projectionService.get7DayMaintenanceProjection(referenceDate);
-      return res.json({ success: true, data: result });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.OK).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
     }
   };
 
   // ----------------------------------------------------
   // AUDITORÍA Y SALUD DEL SISTEMA (SOA Healthcheck)
   // ----------------------------------------------------
-  getHealth = async (req: Request, res: Response) => {
+  getHealth = async (req: Request, res: Response): Promise<void> => {
     const servicesHealth = ResilientExecutor.getServicesHealth();
-    return res.json({
+    res.status(HTTP_STATUS.OK).json({
       status: 'UP',
       timestamp: new Date().toISOString(),
-      architecture: 'Layered + SOA with Graceful Degradation',
+      architecture: 'Layered + SOA with Graceful Degradation (DI Container wired)',
       database: this.repos.isPostgres ? 'PostgreSQL Relational' : 'In-Memory Relational Engine',
       services: servicesHealth
     });
   };
 
-  getAuditLogs = async (req: Request, res: Response) => {
+  getAuditLogs = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const logs = await this.auditService.getAllLogs();
-      return res.json({ success: true, data: logs });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.OK).json({ success: true, data: logs });
+    } catch (err) {
+      next(err);
     }
   };
 
   // ----------------------------------------------------
   // RESET DE DATOS DE DEMOSTRACIÓN (Para el evaluador)
   // ----------------------------------------------------
-  resetDemoData = async (req: Request, res: Response) => {
+  resetDemoData = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const result = await seedDatabase(this.repos);
-      return res.json({ success: true, ...result });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      res.status(HTTP_STATUS.OK).json({ success: true, ...result });
+    } catch (err) {
+      next(err);
     }
   };
 }

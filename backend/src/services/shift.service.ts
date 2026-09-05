@@ -11,15 +11,22 @@ import { IShiftRepository, IEquipmentRepository, IOperatorRepository } from '../
 import { OperatorService } from './operator.service.js';
 import { EquipmentService } from './equipment.service.js';
 import { AuditService } from './audit.service.js';
+import {
+  NotFoundError,
+  ValidationError,
+  BusinessRuleViolationError,
+  ConflictError
+} from '../core/errors/app-error.js';
+import { BUSINESS_RULES_CONFIG } from '../core/constants/index.js';
 
 export class ShiftService {
   constructor(
-    private shiftRepo: IShiftRepository,
-    private equipmentRepo: IEquipmentRepository,
-    private operatorRepo: IOperatorRepository,
-    private operatorService: OperatorService,
-    private equipmentService: EquipmentService,
-    private auditService?: AuditService
+    private readonly shiftRepo: IShiftRepository,
+    private readonly equipmentRepo: IEquipmentRepository,
+    private readonly operatorRepo: IOperatorRepository,
+    private readonly operatorService: OperatorService,
+    private readonly equipmentService: EquipmentService,
+    private readonly auditService?: AuditService
   ) {}
 
   async getAllShifts(): Promise<Shift[]> {
@@ -40,9 +47,14 @@ export class ShiftService {
     planned_duration_hours?: number;
     notes?: string;
   }): Promise<Shift> {
-    const plannedHours = data.planned_duration_hours ?? 8;
-    if (plannedHours <= 0 || plannedHours > 24) {
-      throw new Error('La duración planificada del turno debe estar entre 1 y 24 horas.');
+    const plannedHours = data.planned_duration_hours ?? BUSINESS_RULES_CONFIG.DEFAULT_SHIFT_DURATION_HOURS;
+    if (
+      plannedHours < BUSINESS_RULES_CONFIG.MIN_SHIFT_DURATION_HOURS ||
+      plannedHours > BUSINESS_RULES_CONFIG.MAX_SHIFT_DURATION_HOURS
+    ) {
+      throw new ValidationError(
+        `La duración planificada del turno debe estar entre ${BUSINESS_RULES_CONFIG.MIN_SHIFT_DURATION_HOURS} y ${BUSINESS_RULES_CONFIG.MAX_SHIFT_DURATION_HOURS} horas.`
+      );
     }
 
     const code = `TUR-${data.date}-${data.period.substring(0, 1).toUpperCase()}`;
@@ -191,22 +203,30 @@ export class ShiftService {
     if (!validation.valid) {
       if (data.is_override) {
         if (!validation.can_override) {
-          throw new Error(
+          throw new ConflictError(
             `No se puede forzar la asignación debido a colisión física de recursos:\n- ${validation.errors.join('\n- ')}`
           );
         }
 
         if (!data.override_by || data.override_by.trim().length === 0) {
-          throw new Error('Para forzar una asignación es obligatorio indicar el usuario/código del supervisor autorizante.');
+          throw new ValidationError(
+            'Para forzar una asignación es obligatorio indicar el usuario/código del supervisor autorizante.'
+          );
         }
 
-        if (!data.override_reason || data.override_reason.trim().length < 10) {
-          throw new Error('La justificación de la excepción de supervisor debe contener al menos 10 caracteres explicativos.');
+        if (
+          !data.override_reason ||
+          data.override_reason.trim().length < BUSINESS_RULES_CONFIG.MIN_SUPERVISOR_OVERRIDE_REASON_LENGTH
+        ) {
+          throw new ValidationError(
+            `La justificación de la excepción de supervisor debe contener al menos ${BUSINESS_RULES_CONFIG.MIN_SUPERVISOR_OVERRIDE_REASON_LENGTH} caracteres explicativos.`
+          );
         }
       } else {
-        // Devolver TODAS las violaciones juntas
-        throw new Error(
-          `Asignación rechazada por incumplir ${validation.errors.length} regla(s) de negocio:\n- ${validation.errors.join('\n- ')}`
+        // Regla 11: Devolver TODAS las violaciones juntas con tipado de error formal
+        throw new BusinessRuleViolationError(
+          `Asignación rechazada por incumplir ${validation.errors.length} regla(s) de negocio:\n- ${validation.errors.join('\n- ')}`,
+          validation.errors
         );
       }
     }
@@ -264,20 +284,26 @@ export class ShiftService {
   }> {
     const shift = await this.shiftRepo.findById(data.shift_id);
     if (!shift) {
-      throw new Error(`Turno con ID ${data.shift_id} no encontrado.`);
+      throw new NotFoundError('Turno minero', data.shift_id);
     }
 
     if (shift.status === 'CERRADO') {
-      throw new Error(`El turno ${shift.code} ya se encuentra cerrado.`);
+      throw new ConflictError(`El turno ${shift.code} ya se encuentra cerrado.`);
     }
 
     const actualHours = Number(data.actual_duration_hours);
-    if (isNaN(actualHours) || actualHours < 0 || actualHours > 24) {
-      throw new Error('Las horas efectivamente trabajadas deben ser un número entre 0 y 24.');
+    if (
+      isNaN(actualHours) ||
+      actualHours < 0 ||
+      actualHours > BUSINESS_RULES_CONFIG.MAX_SHIFT_DURATION_HOURS
+    ) {
+      throw new ValidationError(
+        `Las horas efectivamente trabajadas deben ser un número entre 0 y ${BUSINESS_RULES_CONFIG.MAX_SHIFT_DURATION_HOURS}.`
+      );
     }
 
     if (!data.closed_by || data.closed_by.trim().length === 0) {
-      throw new Error('Debe indicarse el responsable del cierre de turno.');
+      throw new ValidationError('Debe indicarse el responsable del cierre de turno.');
     }
 
     // 1. Obtener todas las asignaciones del turno

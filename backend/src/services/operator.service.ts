@@ -1,5 +1,6 @@
 import { Operator, Certification, EquipmentType } from '../domain/types.js';
 import { IOperatorRepository } from '../repositories/interfaces.js';
+import { NotFoundError, ValidationError } from '../core/errors/app-error.js';
 
 export interface CertificationCheckResult {
   isValid: boolean;
@@ -8,7 +9,7 @@ export interface CertificationCheckResult {
 }
 
 export class OperatorService {
-  constructor(private operatorRepo: IOperatorRepository) {}
+  constructor(private readonly operatorRepo: IOperatorRepository) {}
 
   async getAllOperators(): Promise<Operator[]> {
     return this.operatorRepo.findAll();
@@ -24,6 +25,13 @@ export class OperatorService {
     document_id: string;
     is_active?: boolean;
   }): Promise<Operator> {
+    if (!data.name || data.name.trim().length === 0) {
+      throw new ValidationError('El nombre del operador es obligatorio.');
+    }
+    if (!data.document_id || data.document_id.trim().length === 0) {
+      throw new ValidationError('El documento de identidad es obligatorio.');
+    }
+
     return this.operatorRepo.create({
       code: data.code.trim().toUpperCase(),
       name: data.name.trim(),
@@ -40,7 +48,7 @@ export class OperatorService {
     institution?: string;
   }): Promise<Certification> {
     if (data.expiration_date <= data.issued_date) {
-      throw new Error('La fecha de vencimiento debe ser posterior a la fecha de emisión.');
+      throw new ValidationError('La fecha de vencimiento debe ser posterior a la fecha de emisión.');
     }
     return this.operatorRepo.addCertification(data);
   }

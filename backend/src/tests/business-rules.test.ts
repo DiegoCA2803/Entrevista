@@ -6,6 +6,8 @@ import { ShiftService } from '../services/shift.service.js';
 import { MaintenanceService } from '../services/maintenance.service.js';
 import { ProjectionService } from '../services/projection.service.js';
 import { AuditService } from '../services/audit.service.js';
+import { bootstrapContainer } from '../core/container/bootstrap.js';
+import { TOKENS } from '../core/container/container.js';
 
 describe('Reglas de Negocio - Control de Flota Minera', () => {
   let repos: ReturnType<typeof resetRepositoriesForTesting>;
@@ -16,29 +18,16 @@ describe('Reglas de Negocio - Control de Flota Minera', () => {
   let projectionService: ProjectionService;
   let auditService: AuditService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     repos = resetRepositoriesForTesting();
-    auditService = new AuditService(repos.auditRepo);
-    equipmentService = new EquipmentService(repos.equipmentRepo);
-    operatorService = new OperatorService(repos.operatorRepo);
-    shiftService = new ShiftService(
-      repos.shiftRepo,
-      repos.equipmentRepo,
-      repos.operatorRepo,
-      operatorService,
-      equipmentService,
-      auditService
-    );
-    maintenanceService = new MaintenanceService(
-      repos.maintenanceRepo,
-      repos.equipmentRepo,
-      repos.shiftRepo,
-      auditService
-    );
-    projectionService = new ProjectionService(
-      repos.equipmentRepo,
-      repos.shiftRepo
-    );
+    // Resolución de dependencias mediante el contenedor IoC (DIP / Clean Code)
+    const container = await bootstrapContainer(repos);
+    auditService = container.resolve<AuditService>(TOKENS.AuditService);
+    equipmentService = container.resolve<EquipmentService>(TOKENS.EquipmentService);
+    operatorService = container.resolve<OperatorService>(TOKENS.OperatorService);
+    shiftService = container.resolve<ShiftService>(TOKENS.ShiftService);
+    maintenanceService = container.resolve<MaintenanceService>(TOKENS.MaintenanceService);
+    projectionService = container.resolve<ProjectionService>(TOKENS.ProjectionService);
   });
 
   // ----------------------------------------------------

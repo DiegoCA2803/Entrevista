@@ -137,6 +137,20 @@ Para evitar que la caída o latencia de un servicio secundario interrumpa la ope
   4. Los servicios críticos del núcleo (asignación de recursos, cierre de turno, registro de mantenimientos) siguen operando al 100% sin interrupciones.
   5. La interfaz visualiza una alerta informativa de *"Modo de Degradación Elegante Activado"* con métricas de salud en `/api/health`.
 
+### 3.3. Inyección de Dependencias (IoC Container) y Clean Code (SOLID)
+Para garantizar la máxima mantenibilidad, testeabilidad y desacoplamiento del código:
+1. **Contenedor IoC Tipado (`backend/src/core/container/container.ts`)**:
+   - Implementación de un contenedor de inversión de control que gestiona el ciclo de vida de los componentes (fábricas perezosas y singletons).
+   - Inversión de Dependencias estricta (DIP): Los módulos de alto nivel dependen de abstracciones e interfaces (`IEquipmentRepository`, `IShiftRepository`), no de implementaciones concretas.
+   - Centralización en un **Composition Root** (`backend/src/core/container/bootstrap.ts`) que resuelve el grafo completo de dependencias en el arranque o durante los tests unitarios.
+2. **Jerarquía de Errores de Dominio (`backend/src/core/errors/app-error.ts`)**:
+   - Sustitución de `Error` genéricos por tipos semánticos: `NotFoundError` (404), `ConflictError` (409), `ValidationError` (400) y `BusinessRuleViolationError` (422).
+   - `BusinessRuleViolationError` transporta el listado completo de violaciones de reglas de negocio para la **Regla 11**, permitiendo al frontend renderizar cada causa de forma estructurada.
+3. **Manejo Centralizado de Errores (`backend/src/core/middleware/error.middleware.ts`)**:
+   - Middleware de Express que captura excepciones no controladas y formatea respuestas HTTP con códigos de estado canónicos, eliminando la duplicación de bloques try/catch en los controladores.
+4. **Constantes y Reglas de Negocio Desacopladas (`backend/src/core/constants/index.ts`)**:
+   - Eliminación de números mágicos (umbrales de mantenimiento, límites de jornada, longitud mínima de justificación de supervisor) en un archivo centralizado de configuración.
+
 ---
 
 ## 4. Alcance, Trade-offs y Mejoras Futuras

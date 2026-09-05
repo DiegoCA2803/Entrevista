@@ -1,8 +1,10 @@
 import { Equipment, EquipmentStatus, EquipmentType } from '../domain/types.js';
 import { IEquipmentRepository } from '../repositories/interfaces.js';
+import { NotFoundError } from '../core/errors/app-error.js';
+import { BUSINESS_RULES_CONFIG } from '../core/constants/index.js';
 
 export class EquipmentService {
-  constructor(private equipmentRepo: IEquipmentRepository) {}
+  constructor(private readonly equipmentRepo: IEquipmentRepository) {}
 
   async getAllEquipment(): Promise<Equipment[]> {
     return this.equipmentRepo.findAll();
@@ -25,7 +27,7 @@ export class EquipmentService {
     last_maintenance_horometer?: number;
   }): Promise<Equipment> {
     const horometer = data.horometer ?? 0;
-    const interval = data.maintenance_interval_hours ?? 250;
+    const interval = data.maintenance_interval_hours ?? BUSINESS_RULES_CONFIG.DEFAULT_MAINTENANCE_INTERVAL_HOURS;
     const lastPm = data.last_maintenance_horometer ?? 0;
     
     // Regla 2: Si el horómetro ya alcanzó o superó el umbral, inicia BLOQUEADO
@@ -48,31 +50,35 @@ export class EquipmentService {
    * Si lo alcanzó y no está en mantenimiento activo, lo cambia a BLOQUEADO.
    */
   async checkAndApplyMaintenanceBlock(equipmentId: string): Promise<Equipment> {
-    const eq = await this.equipmentRepo.findById(equipmentId);
-    if (!eq) throw new Error(`Equipo ${equipmentId} no encontrado.`);
+    const equipment = await this.equipmentRepo.findById(equipmentId);
+    if (!equipment) {
+      throw new NotFoundError('Equipo minero', equipmentId);
+    }
 
-    const nextThreshold = eq.last_maintenance_horometer + eq.maintenance_interval_hours;
-    if (eq.horometer >= nextThreshold && eq.status !== 'BLOQUEADO' && eq.status !== 'EN_MANTENIMIENTO') {
+    const nextThreshold = equipment.last_maintenance_horometer + equipment.maintenance_interval_hours;
+    if (equipment.horometer >= nextThreshold && equipment.status !== 'BLOQUEADO' && equipment.status !== 'EN_MANTENIMIENTO') {
       return this.equipmentRepo.updateStatus(equipmentId, 'BLOQUEADO');
     }
-    return eq;
+    return equipment;
   }
 
   /**
    * Suma horas de trabajo al horómetro y bloquea si cruza el umbral.
    */
   async addWorkedHours(equipmentId: string, hours: number): Promise<{ equipment: Equipment; newlyBlocked: boolean }> {
-    const eq = await this.equipmentRepo.findById(equipmentId);
-    if (!eq) throw new Error(`Equipo ${equipmentId} no encontrado.`);
+    const equipment = await this.equipmentRepo.findById(equipmentId);
+    if (!equipment) {
+      throw new NotFoundError('Equipo minero', equipmentId);
+    }
 
-    const newHorometer = Number((eq.horometer + hours).toFixed(2));
-    const nextThreshold = eq.last_maintenance_horometer + eq.maintenance_interval_hours;
+    const newHorometer = Number((equipment.horometer + hours).toFixed(2));
+    const nextThreshold = equipment.last_maintenance_horometer + equipment.maintenance_interval_hours;
     
-    let nextStatus = eq.status;
+    let nextStatus = equipment.status;
     let newlyBlocked = false;
 
     if (newHorometer >= nextThreshold) {
-      if (eq.status !== 'BLOQUEADO') {
+      if (equipment.status !== 'BLOQUEADO') {
         nextStatus = 'BLOQUEADO';
         newlyBlocked = true;
       }

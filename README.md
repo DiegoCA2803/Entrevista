@@ -26,7 +26,11 @@ Diseñado bajo una **Arquitectura en Capas Orientada a Servicios (SOA) con Degra
    - Simulación prospectiva del uso de la flota sumando las horas de los turnos programados para los próximos 7 días, detectando el día y la jornada exacta del cruce de umbral.
 7. **Excepción con Autorización de Supervisor**:
    - Mecanismo de override auditado con código de supervisor y justificación obligatoria ($\ge 10$ caracteres).
-8. **Degradación Elegante (SOA Resilience)**:
+8. **Inyección de Dependencias (IoC Container) y Clean Code**:
+   - Contenedor de inversión de control tipado (`DIContainer`) y Composition Root para resolución desacoplada siguiendo principios SOLID.
+   - Jerarquía de errores de dominio tipados (`NotFoundError`, `ValidationError`, `ConflictError`, `BusinessRuleViolationError`).
+   - Middleware centralizado de gestión de errores y eliminación de código repetitivo.
+9. **Degradación Elegante (SOA Resilience)**:
    - Circuit Breaker y fallback en servicios auxiliares (proyecciones complejas y analítica) para garantizar que las operaciones críticas del núcleo minero nunca se detengan ante fallos periféricos.
 
 ---
