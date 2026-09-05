@@ -1,4 +1,4 @@
-# ⛏️ MineFleet — Sistema de Control de Asignación de Equipos y Mantenimiento Minero
+# MineFleet — Sistema de Control de Asignación de Equipos y Mantenimiento Minero
 
 Aplicación web integral desarrollada para resolver el control de asignaciones operativas en minería (camiones de acarreo, excavadoras, perforadoras), eliminando las fallas humanas de las hojas de cálculo tradicionales: asignaciones de equipos vencidos de mantenimiento, operadores sin acreditación y colisiones de recursos.
 
@@ -6,7 +6,7 @@ Diseñado bajo una **Arquitectura en Capas Orientada a Servicios (SOA) con Degra
 
 ---
 
-## 🌟 Características Principales y Cumplimiento de Reglas
+## Características Principales y Cumplimiento de Reglas
 
 1. **Gestión de Equipos y Horómetros (Reglas 1, 2 y 3)**:
    - Control de horómetro acumulado por equipo e intervalos de mantenimiento preventivo (PM-250h).
@@ -35,7 +35,7 @@ Diseñado bajo una **Arquitectura en Capas Orientada a Servicios (SOA) con Degra
 
 ---
 
-## 🏗️ Arquitectura del Sistema
+## Arquitectura del Sistema
 
 ```
                             [ Frontend SPA - React + Vite + Tailwind ]
@@ -70,7 +70,7 @@ Diseñado bajo una **Arquitectura en Capas Orientada a Servicios (SOA) con Degra
 
 ---
 
-## 🚀 Cómo Levantarlo en Local
+## Cómo Levantarlo en Local
 
 ### Requisitos Previos
 - **Node.js**: v20 o superior (recomendado v22)
@@ -147,7 +147,7 @@ npm test
 
 ---
 
-## 📋 Datos de Prueba Precargados (Casos Borde)
+## Datos de Prueba Precargados (Casos Borde)
 
 Al iniciar por primera vez o al hacer clic en el botón superior **"Reset Datos Demo"**, la aplicación precarga los casos límite requeridos:
 
@@ -162,7 +162,7 @@ Al iniciar por primera vez o al hacer clic en el botón superior **"Reset Datos 
 
 ---
 
-## ☁️ Guía de Despliegue en la Nube
+## Guía de Despliegue en la Nube
 
 La aplicación está diseñada para ser desplegada en cualquier plataforma en la nube (Render, Railway, Fly.io, Vercel o VPS propia):
 
