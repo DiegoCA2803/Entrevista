@@ -126,7 +126,7 @@ npm run dev:frontend
 
 ---
 
-## 🧪 Pruebas Automatizadas
+##  Pruebas Automatizadas
 
 El proyecto incluye una suite de pruebas automatizadas con **Vitest** que valida exhaustivamente las 12 reglas de negocio, concurrencia y degradación elegante:
 
