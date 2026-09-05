@@ -59,14 +59,14 @@ export const ProjectionPage: React.FC<ProjectionPageProps> = ({ onRefresh }) => 
         <div>
           <h1 className="text-2xl font-black text-slate-100 tracking-tight flex items-center space-x-2">
             <TrendingUp className="w-6 h-6 text-amber-400" />
-            <span>Proyección Analítica de Mantenimiento a 7 Días</span>
+            <span>Proyección Analítica a 7 Días</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Cálculo proyectivo de uso según los turnos programados en el horizonte futuro (Regla 12).
+            Cálculo preventivo de horas acumuladas según los turnos programados en los próximos 7 días.
           </p>
         </div>
 
-        {/* Selector de Fecha Base y Estado SOA */}
+        {/* Selector de Fecha Base */}
         <div className="flex items-center space-x-3 self-start md:self-auto">
           <div className="flex items-center space-x-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs">
             <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -90,18 +90,18 @@ export const ProjectionPage: React.FC<ProjectionPageProps> = ({ onRefresh }) => 
         </div>
       </div>
 
-      {/* Banner de Degradación Elegante (SOA Resilience) */}
+      {/* Alerta de Modo de Respaldo */}
       {isDegraded && (
         <div className="p-4 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Activity className="w-5 h-5 text-amber-400 animate-pulse flex-shrink-0" />
             <div>
-              <span className="font-bold text-amber-300">Modo de Degradación Elegante Activado (Graceful Degradation):</span>
-              <p className="text-[11px] text-amber-200/90">{warningMsg || 'Servicio de simulación en fallback lineal seguro.'}</p>
+              <span className="font-bold text-amber-300">Modo de Respaldo Activo:</span>
+              <p className="text-[11px] text-amber-200/90">{warningMsg || 'Servicio de proyección operando con motor de respaldo seguro.'}</p>
             </div>
           </div>
           <span className="px-2 py-0.5 rounded bg-amber-500/30 text-amber-100 text-[10px] font-bold uppercase">
-            SOA Resiliente
+            Respaldo Activo
           </span>
         </div>
       )}

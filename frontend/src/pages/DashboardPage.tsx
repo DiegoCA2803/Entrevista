@@ -1,13 +1,13 @@
 import React from 'react';
 import { 
-  AlertTriangle, 
-  CheckCircle2, 
-  Clock, 
-  ArrowRight, 
-  ShieldAlert, 
   Calendar, 
-  Truck,
-  Wrench
+  Truck, 
+  ArrowRight, 
+  CheckCircle2, 
+  AlertTriangle,
+  Clock,
+  Wrench,
+  User
 } from 'lucide-react';
 import { Equipment, Operator, Shift, ProjectionItem } from '../types.js';
 import { KPIs } from '../components/KPIs.js';
@@ -29,38 +29,31 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   setCurrentTab,
   onOpenCloseShift
 }) => {
-  // Encontrar casos borde precargados para guiar al evaluador
-  const nearPmEquipment = equipment.find(e => {
-    const threshold = e.last_maintenance_horometer + e.maintenance_interval_hours;
-    const remaining = threshold - e.horometer;
-    return remaining > 0 && remaining <= 10 && e.status === 'DISPONIBLE';
-  });
-
-  const expiredOperator = operators.find(op => {
-    const today = new Date().toISOString().split('T')[0];
-    return (op.certifications || []).some(c => c.expiration_date < today);
-  });
-
-  const openShiftWithNearPm = shifts.find(s => 
-    s.status === 'PROGRAMADO' && 
-    (s.assignments || []).some(a => a.equipment_id === nearPmEquipment?.id)
-  );
-
   return (
-    <div className="space-y-6">
-      {/* Saludo y Resumen Operativo */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="space-y-8">
+      {/* Título y Resumen */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800">
         <div>
-          <h1 className="text-2xl font-black text-slate-100 tracking-tight">
-            Control de Flota y Asignaciones Mineras
+          <h1 className="text-3xl font-black text-white tracking-tight">
+            Panel de Control de Operaciones
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Supervisión en tiempo real de horómetros, certificaciones de operadores y proyección preventiva.
+            Supervisión en tiempo real de máquinas, operadores certificados y turnos de trabajo.
           </p>
+        </div>
+
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setCurrentTab('shifts')}
+            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all flex items-center space-x-2"
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Gestionar Asignaciones</span>
+          </button>
         </div>
       </div>
 
-      {/* Tarjetas de Métricas (KPIs) */}
+      {/* Indicadores Clave (KPIs) */}
       <KPIs
         equipment={equipment}
         operators={operators}
@@ -68,136 +61,100 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         projection={projection}
       />
 
-      {/* GUÍA INTERACTIVA DE PRUEBA (Casos Borde Clave para el Evaluador) */}
-      <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-slate-900 to-slate-900 border border-amber-500/30 shadow-xl">
-        <div className="flex items-center space-x-2 text-amber-400 font-bold text-sm mb-3">
-          <ShieldAlert className="w-5 h-5 flex-shrink-0" />
-          <span>Casos Borde de Demostración Precargados (Listo para Probar)</span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-          {/* Caso 1: Equipo al límite */}
-          <div className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-amber-300">1. Equipo Próximo a PM</span>
-              <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold">
-                {nearPmEquipment ? nearPmEquipment.code : 'CAM-001'}
-              </span>
+      {/* Secciones Principales Separadas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Columna 1: Turnos y Asignaciones */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-white">Turnos de Trabajo y Asignaciones</h2>
+                <p className="text-xs text-slate-400">Jornadas programadas y máquinas operando</p>
+              </div>
             </div>
-            <p className="text-slate-300 text-[11px] leading-relaxed">
-              Tiene <strong>{nearPmEquipment?.horometer}h</strong> de {nearPmEquipment ? nearPmEquipment.last_maintenance_horometer + nearPmEquipment.maintenance_interval_hours : 250}h. Le restan solo <strong>4h</strong> de uso.
-            </p>
-            <button
-              onClick={() => setCurrentTab('equipment')}
-              className="text-amber-400 hover:text-amber-300 font-medium inline-flex items-center space-x-1 pt-1"
-            >
-              <span>Ver en Flota</span>
-              <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
-
-          {/* Caso 2: Operador con certificación vencida */}
-          <div className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-red-300">2. Operador Cert. Vencida</span>
-              <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 text-[10px] font-mono font-bold">
-                {expiredOperator ? expiredOperator.code : 'OP-003'}
-              </span>
-            </div>
-            <p className="text-slate-300 text-[11px] leading-relaxed">
-              <strong>{expiredOperator?.name}</strong> tiene su certificación vencida. Intentar asignarlo activará el rechazo por Regla 9 (o múltiple por Regla 11).
-            </p>
             <button
               onClick={() => setCurrentTab('shifts')}
-              className="text-red-400 hover:text-red-300 font-medium inline-flex items-center space-x-1 pt-1"
+              className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center space-x-1"
             >
-              <span>Intentar Asignación</span>
-              <ArrowRight className="w-3 h-3" />
+              <span>Ver todos los turnos</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {/* Caso 3: Cierre que dispara bloqueo */}
-          <div className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-emerald-300">3. Turno Crítico</span>
-              <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold">
-                {openShiftWithNearPm ? openShiftWithNearPm.code : 'TURNO HOY'}
-              </span>
-            </div>
-            <p className="text-slate-300 text-[11px] leading-relaxed">
-              Asignado con {nearPmEquipment?.code}. Al hacer clic en <strong>Cerrar Turno</strong> con 8h, superará las 250h y se bloqueará en vivo.
-            </p>
-            {openShiftWithNearPm && (
-              <button
-                onClick={() => onOpenCloseShift(openShiftWithNearPm)}
-                className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center space-x-1 pt-1"
-              >
-                <span>¡Cerrar este Turno Ahora!</span>
-                <ArrowRight className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Grid de Estado Rápido: Turnos Recientes y Equipos Críticos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Turnos Programados */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-100 flex items-center space-x-2">
-              <Calendar className="w-4 h-4 text-amber-400" />
-              <span>Turnos Próximos y Asignaciones</span>
-            </h2>
-            <button
-              onClick={() => setCurrentTab('shifts')}
-              className="text-xs text-amber-400 hover:text-amber-300 font-semibold"
-            >
-              Ver Todos
-            </button>
-          </div>
-
-          <div className="space-y-2.5">
+          <div className="space-y-4">
             {shifts.slice(0, 4).map((shift) => {
               const assignments = shift.assignments || [];
+              const isClosed = shift.status === 'CERRADO';
               const hasRisk = assignments.some(a => a.status === 'EN_RIESGO');
+
               return (
                 <div
                   key={shift.id}
-                  className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between hover:bg-slate-800 transition-colors"
+                  className={`p-4 rounded-xl border transition-all ${
+                    hasRisk
+                      ? 'bg-amber-500/5 border-amber-500/40 ring-1 ring-amber-500/20'
+                      : 'bg-slate-800/50 border-slate-700/70 hover:border-slate-600'
+                  }`}
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono font-bold text-slate-200 text-xs">{shift.code}</span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                        shift.status === 'CERRADO'
-                          ? 'bg-slate-700 text-slate-300'
-                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                      }`}>
-                        {shift.status}
-                      </span>
-                      {hasRisk && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
-                          EN RIESGO
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono font-bold text-white text-sm">{shift.code}</span>
+                        <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold ${
+                          isClosed
+                            ? 'bg-slate-700 text-slate-300'
+                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        }`}>
+                          {shift.status}
+                        </span>
+                        {hasRisk && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-red-500/20 text-red-300 border border-red-500/30">
+                            Equipo en riesgo
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-slate-400 flex items-center space-x-2">
+                        <span>Fecha: <strong className="text-slate-200">{shift.date}</strong></span>
+                        <span>•</span>
+                        <span>Jornada: <strong className="text-slate-200">{shift.period}</strong></span>
+                        <span>•</span>
+                        <span>{assignments.length} asignación(es)</span>
+                      </p>
+
+                      {/* Resumen de Asignaciones */}
+                      {assignments.length > 0 && (
+                        <div className="pt-2 flex flex-wrap gap-2">
+                          {assignments.map(a => (
+                            <span key={a.id} className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-800 text-[11px] text-slate-200 border border-slate-700">
+                              <Truck className="w-3 h-3 text-amber-400" />
+                              <strong>{a.equipment?.code}</strong>
+                              <span className="text-slate-400">con</span>
+                              <span>{a.operator?.name.split(' ')[0]}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="self-start sm:self-center pt-2 sm:pt-0">
+                      {!isClosed ? (
+                        <button
+                          onClick={() => onOpenCloseShift(shift)}
+                          className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-md shadow-emerald-500/20 transition-all flex items-center space-x-1.5"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Cerrar Turno</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-medium bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+                          Completado ({shift.actual_duration_hours}h)
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-400">
-                      Fecha: {shift.date} ({shift.period}) — {assignments.length} equipo(s) asignado(s)
-                    </p>
-                  </div>
-
-                  <div>
-                    {shift.status !== 'CERRADO' ? (
-                      <button
-                        onClick={() => onOpenCloseShift(shift)}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-semibold transition-colors"
-                      >
-                        Cerrar Turno
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-500 font-medium">Cerrado ({shift.actual_duration_hours}h)</span>
-                    )}
                   </div>
                 </div>
               );
@@ -205,63 +162,83 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </div>
 
-        {/* Equipos en Riesgo o Próximos a Mantenimiento */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-100 flex items-center space-x-2">
-              <Truck className="w-4 h-4 text-amber-400" />
-              <span>Estado de Horómetros de Flota</span>
-            </h2>
+        {/* Columna 2: Estado de la Flota de Máquinas */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                <Truck className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-white">Horómetros y Mantenimiento de Máquinas</h2>
+                <p className="text-xs text-slate-400">Horas acumuladas hacia el límite de 250h</p>
+              </div>
+            </div>
             <button
               onClick={() => setCurrentTab('equipment')}
-              className="text-xs text-amber-400 hover:text-amber-300 font-semibold"
+              className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center space-x-1"
             >
-              Gestionar Flota
+              <span>Ver todos los equipos</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-4">
             {equipment.map((eq) => {
               const threshold = eq.last_maintenance_horometer + eq.maintenance_interval_hours;
               const hoursSincePm = eq.horometer - eq.last_maintenance_horometer;
+              const remaining = threshold - eq.horometer;
               const percent = Math.min(100, Math.round((hoursSincePm / eq.maintenance_interval_hours) * 100));
-              const isCritical = eq.status === 'BLOQUEADO' || percent >= 95;
+              const isBlocked = eq.status === 'BLOQUEADO';
 
               return (
                 <div
                   key={eq.id}
-                  className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 space-y-2 hover:bg-slate-800 transition-colors"
+                  className={`p-4 rounded-xl border transition-all ${
+                    isBlocked
+                      ? 'bg-red-500/5 border-red-500/40 ring-1 ring-red-500/20'
+                      : 'bg-slate-800/50 border-slate-700/70 hover:border-slate-600'
+                  }`}
                 >
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono font-bold text-slate-200">{eq.code}</span>
-                      <span className="text-slate-400 text-[11px]">({eq.name})</span>
+                  <div className="flex items-center justify-between text-xs mb-2">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono font-bold text-white text-sm">{eq.code}</span>
+                        <span className="text-slate-300 font-medium">{eq.name}</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">{eq.type.replace('_', ' ')}</span>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                      eq.status === 'BLOQUEADO'
+
+                    <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] ${
+                      isBlocked
                         ? 'bg-red-500/20 text-red-300 border border-red-500/30'
                         : eq.status === 'EN_MANTENIMIENTO'
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        : 'bg-emerald-500/20 text-emerald-300'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                     }`}>
-                      {eq.status}
+                      {isBlocked ? 'BLOQUEADO' : eq.status}
                     </span>
                   </div>
 
-                  {/* Barra de Progreso de Horómetro */}
-                  <div>
-                    <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                      <span>Uso: <strong className="text-slate-200">{eq.horometer}h</strong></span>
-                      <span>Próximo PM: <strong className="text-slate-200">{threshold}h</strong> ({percent}%)</span>
+                  {/* Barra de Desgaste */}
+                  <div className="mt-3 space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-400">
+                        Uso: <strong className="text-white">{eq.horometer} hrs</strong>
+                      </span>
+                      <span className={remaining <= 0 ? 'text-red-400 font-bold' : remaining <= 10 ? 'text-amber-400 font-bold' : 'text-slate-300 font-semibold'}>
+                        {remaining > 0 ? `Quedan ${remaining.toFixed(1)} hrs` : 'Límite alcanzado'} (Meta: {threshold}h)
+                      </span>
                     </div>
-                    <div className="w-full bg-slate-700/80 rounded-full h-2 overflow-hidden">
+
+                    <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
-                          eq.status === 'BLOQUEADO'
+                          isBlocked
                             ? 'bg-red-500'
                             : percent >= 95
-                            ? 'bg-amber-500 animate-pulse'
-                            : 'bg-blue-500'
+                            ? 'bg-amber-500'
+                            : 'bg-emerald-500'
                         }`}
                         style={{ width: `${percent}%` }}
                       />

@@ -26,77 +26,78 @@ export const KPIs: React.FC<KPIsProps> = ({ equipment, operators, shifts, projec
 
   const cards = [
     {
-      title: 'Flota Total',
+      title: 'Flota de Equipos',
       value: totalEquipment,
-      subtitle: `${availableEquipment} disponibles`,
+      subtitle: `${availableEquipment} listos para operar`,
       icon: Truck,
       color: 'text-blue-400',
-      bg: 'bg-blue-500/10 border-blue-500/20',
-      badge: 'Operativa'
+      badge: 'Operativa',
+      badgeColor: 'bg-blue-500/20 text-blue-300'
     },
     {
-      title: 'Bloqueados por PM',
+      title: 'Equipos Bloqueados',
       value: blockedEquipment,
-      subtitle: 'Requieren mantenimiento',
+      subtitle: blockedEquipment > 0 ? 'Superaron límite de 250h' : 'Ningún equipo bloqueado',
       icon: AlertOctagon,
       color: 'text-red-400',
-      bg: 'bg-red-500/10 border-red-500/20',
-      badge: blockedEquipment > 0 ? 'Atención Inmediata' : 'Normal',
-      badgeColor: blockedEquipment > 0 ? 'bg-red-500/20 text-red-300' : 'bg-slate-700 text-slate-300'
+      badge: blockedEquipment > 0 ? 'Requiere Mantenimiento' : 'Al Día',
+      badgeColor: blockedEquipment > 0 ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'
     },
     {
-      title: 'En Taller / Mantenimiento',
+      title: 'En Taller',
       value: maintenanceEquipment,
-      subtitle: 'En servicio activo',
+      subtitle: 'En revisión mecánica',
       icon: Wrench,
       color: 'text-amber-400',
-      bg: 'bg-amber-500/10 border-amber-500/20',
-      badge: 'Taller'
+      badge: 'Taller Activo',
+      badgeColor: 'bg-amber-500/20 text-amber-300'
     },
     {
       title: 'Operadores',
       value: totalOperators,
-      subtitle: `${operatorsWithExpiredCerts} con cert. vencida`,
+      subtitle: `${operatorsWithExpiredCerts} con licencia vencida`,
       icon: Users,
       color: 'text-purple-400',
-      bg: 'bg-purple-500/10 border-purple-500/20',
-      badge: operatorsWithExpiredCerts > 0 ? 'Cert. Vencidas' : 'Al Día',
+      badge: operatorsWithExpiredCerts > 0 ? 'Revisar Licencias' : 'Todos Acreditados',
       badgeColor: operatorsWithExpiredCerts > 0 ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
     },
     {
-      title: 'Alcanzarán PM (7 días)',
+      title: 'Alerta a 7 Días',
       value: criticalProjectionCount,
-      subtitle: 'Según turnos programados',
+      subtitle: 'Llegarán a 250h esta semana',
       icon: Calendar,
       color: 'text-amber-400',
-      bg: 'bg-amber-500/10 border-amber-500/30 ring-1 ring-amber-500/20',
       badge: 'Proyección Futura',
-      badgeColor: 'bg-amber-500/20 text-amber-300 font-semibold'
+      badgeColor: 'bg-amber-500/20 text-amber-300'
     }
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
       {cards.map((card, idx) => {
         const Icon = card.icon;
         return (
           <div
             key={idx}
-            className={`p-4 rounded-xl border ${card.bg} backdrop-blur-sm relative overflow-hidden transition-all hover:scale-[1.01]`}
+            className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg relative overflow-hidden transition-all hover:border-slate-700"
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{card.title}</span>
-              <Icon className={`w-5 h-5 ${card.color}`} />
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{card.title}</span>
+              <div className="p-2 rounded-xl bg-slate-800 text-amber-400">
+                <Icon className={`w-5 h-5 ${card.color}`} />
+              </div>
             </div>
             <div className="flex items-baseline space-x-2">
-              <span className="text-3xl font-extrabold text-slate-100">{card.value}</span>
-              {card.badge && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${card.badgeColor || 'bg-slate-800 text-slate-300'}`}>
-                  {card.badge}
-                </span>
-              )}
+              <span className="text-4xl font-black text-white">{card.value}</span>
             </div>
-            <p className="text-xs text-slate-400 mt-1">{card.subtitle}</p>
+            <div className="mt-2 flex items-center justify-between">
+              <p className="text-xs text-slate-400">{card.subtitle}</p>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-800/80">
+              <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold inline-block ${card.badgeColor}`}>
+                {card.badge}
+              </span>
+            </div>
           </div>
         );
       })}

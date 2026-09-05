@@ -57,7 +57,7 @@ export const OperatorsPage: React.FC<OperatorsPageProps> = ({ operators, onRefre
           <span>Operadores y Acreditaciones Técnicas</span>
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Control de vigencia de licencias y certificaciones por tipología de equipo minero (Regla 4 y 9).
+          Control de vigencia de licencias y certificaciones por tipología de equipo minero.
         </p>
       </div>
 

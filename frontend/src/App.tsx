@@ -116,7 +116,7 @@ export function App() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 space-y-3">
             <span className="w-8 h-8 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
-            <p className="text-xs text-slate-400">Cargando flota minera y estado SOA...</p>
+            <p className="text-xs text-slate-400">Cargando flota minera...</p>
           </div>
         ) : (
           <>
@@ -165,11 +165,6 @@ export function App() {
           </>
         )}
       </main>
-
-      {/* Pie de Página */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-6 text-center text-xs text-slate-500">
-        <p>MineFleet &bull; Arquitectura en Capas + SOA con Degradación Elegante &bull; PostgreSQL Relacional</p>
-      </footer>
 
       {/* Modales */}
       {assignmentModalShift && (

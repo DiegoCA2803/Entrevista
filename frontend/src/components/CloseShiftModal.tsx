@@ -69,7 +69,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
           <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start space-x-2.5">
             <Info className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <p className="font-semibold text-amber-300">Regla 10: Acumulación Real de Horómetros</p>
+              <p className="font-semibold text-amber-300">Actualización de Horómetros al Cierre</p>
               <p className="text-[11px] leading-relaxed text-slate-300">
                 Al cerrar el turno, las <strong className="text-amber-300">horas efectivamente trabajadas</strong> se sumarán al horómetro de los {assignmentsCount} equipo(s) asignados.
                 Si algún equipo alcanza su intervalo de mantenimiento, quedará <strong className="text-red-400">BLOQUEADO</strong> automáticamente.
@@ -79,7 +79,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              Horas Efectivamente Trabajadas (Actual Hours) *
+              Horas Efectivamente Trabajadas *
             </label>
             <div className="relative">
               <input
@@ -95,7 +95,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
               <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">horas</span>
             </div>
             <p className="text-[10px] text-slate-400 mt-1">
-              Planificado: {shift.planned_duration_hours}h. (Decisión 4: Se puede ingresar más o menos horas según contingencias).
+              Planificado: {shift.planned_duration_hours}h (ajusta las horas si hubo horas extra o paradas no programadas).
             </p>
           </div>
 

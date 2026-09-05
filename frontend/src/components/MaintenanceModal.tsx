@@ -84,7 +84,7 @@ export const MaintenanceModal: React.FC<MaintenanceModalProps> = ({
           <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-200 text-xs flex items-start space-x-2.5">
             <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <p className="font-semibold text-blue-300">Regla 3 & Decisión 3: Liberación y Recálculo de Ciclo</p>
+              <p className="font-semibold text-blue-300">Liberación y Reinicio de Ciclo de Mantenimiento</p>
               <p className="text-[11px] leading-relaxed text-slate-300">
                 Al registrar este mantenimiento, el equipo quedará liberado a estado <strong className="text-emerald-400">DISPONIBLE</strong>.
                 El nuevo ciclo se contabilizará desde el <strong className="text-blue-300">horómetro real de servicio ({horometerAtPm}h)</strong>, situando el siguiente mantenimiento a las <strong className="text-amber-400">{nextThreshold}h</strong>.
