@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: minefleet-control
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run --prefix frontend install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
