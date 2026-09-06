@@ -156,7 +156,7 @@ export const AssignmentModal: React.FC<AssignmentModalProps> = ({
                 const isBlocked = eq.status === 'BLOQUEADO';
                 return (
                   <option key={eq.id} value={eq.id}>
-                    {eq.code} — {eq.name} ({eq.horometer}h de uso) {isBlocked ? '⚠️ [BLOQUEADO]' : `[Restan ${remaining > 0 ? remaining.toFixed(0) : 0}h]`}
+                    {eq.code} — {eq.name} ({eq.horometer}h de uso) {isBlocked ? '[BLOQUEADO]' : `[Restan ${remaining > 0 ? remaining.toFixed(0) : 0}h]`}
                   </option>
                 );
               })}

@@ -20,6 +20,25 @@ export function App() {
   const [projection, setProjection] = useState<ProjectionItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Tema: Pantalla Blanca (Light) u Oscura (Dark)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('minefleet-theme');
+    return saved === 'light' ? 'light' : 'dark';
+  });
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('theme-light');
+    } else {
+      document.documentElement.classList.remove('theme-light');
+    }
+    localStorage.setItem('minefleet-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
+  };
+
   // Modals state
   const [assignmentModalShift, setAssignmentModalShift] = useState<Shift | null>(null);
   const [closeModalShift, setCloseModalShift] = useState<Shift | null>(null);
@@ -78,11 +97,13 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col transition-colors duration-200">
       {/* Barra de Navegación Superior */}
       <Navbar
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
+        theme={theme}
+        onToggleTheme={toggleTheme}
         onDataReset={() => {
           loadData();
           showToast('Base de datos restablecida a los casos de prueba solicitados.', 'info');

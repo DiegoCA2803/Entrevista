@@ -64,10 +64,10 @@ if (isDirectRun || process.env.NODE_ENV !== 'test') {
     const PORT = process.env.PORT || 4000;
     app.listen(PORT, () => {
       console.log(`=======================================================`);
-      console.log(`🚀 SERVICIO MINEFLEET CONTROL DE FLOTA ACTIVO`);
-      console.log(`🧩 Inyección de Dependencias (IoC Container) Activada`);
-      console.log(`📡 Servidor escuchando en: http://localhost:${PORT}`);
-      console.log(`🔍 Endpoints API en: http://localhost:${PORT}/api/health`);
+      console.log(`[MineFleet] SERVICIO CONTROL DE FLOTA ACTIVO`);
+      console.log(`[MineFleet] Inyeccion de Dependencias (IoC Container) Activada`);
+      console.log(`[MineFleet] Servidor escuchando en: http://localhost:${PORT}`);
+      console.log(`[MineFleet] Endpoints API en: http://localhost:${PORT}/api/health`);
       console.log(`=======================================================`);
     });
   }).catch(err => {

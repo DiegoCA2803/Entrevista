@@ -26,3 +26,185 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+/* ========================================================
+   MODO PANTALLA BLANCA (LIGHT THEME)
+   ======================================================== */
+html.theme-light {
+  color-scheme: light;
+}
+
+html.theme-light body,
+html.theme-light #root,
+html.theme-light .bg-slate-950 {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Tarjetas y Contenedores */
+html.theme-light .bg-slate-900 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+}
+
+html.theme-light header.bg-slate-900 {
+  background-color: #ffffff !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+
+html.theme-light .bg-slate-800 {
+  background-color: #f1f5f9 !important;
+  color: #1e293b !important;
+}
+
+html.theme-light .bg-slate-800\/40,
+html.theme-light .bg-slate-800\/50,
+html.theme-light .bg-slate-800\/60 {
+  background-color: #f8fafc !important;
+}
+
+html.theme-light .bg-slate-900\/40,
+html.theme-light .bg-slate-900\/90 {
+  background-color: #ffffff !important;
+}
+
+/* Bordes */
+html.theme-light .border-slate-800,
+html.theme-light .border-slate-800\/40,
+html.theme-light .border-slate-800\/60 {
+  border-color: #e2e8f0 !important;
+}
+
+html.theme-light .border-slate-700,
+html.theme-light .border-slate-700\/60,
+html.theme-light .border-slate-700\/70 {
+  border-color: #cbd5e1 !important;
+}
+
+html.theme-light .border-slate-600 {
+  border-color: #cbd5e1 !important;
+}
+
+html.theme-light .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+html.theme-light .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #f1f5f9 !important;
+}
+
+/* Tipografía */
+html.theme-light .text-white,
+html.theme-light .text-slate-100 {
+  color: #0f172a !important;
+}
+
+html.theme-light .text-slate-200 {
+  color: #1e293b !important;
+}
+
+html.theme-light .text-slate-300 {
+  color: #334155 !important;
+}
+
+html.theme-light .text-slate-400 {
+  color: #64748b !important;
+}
+
+html.theme-light .text-slate-500 {
+  color: #64748b !important;
+}
+
+/* Tablas y Filas */
+html.theme-light tr.hover\:bg-slate-800\/40:hover,
+html.theme-light tr.hover\:bg-slate-800:hover {
+  background-color: #f8fafc !important;
+}
+
+html.theme-light thead th {
+  color: #64748b !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+
+/* Formularios, Inputs y Selects */
+html.theme-light input,
+html.theme-light select,
+html.theme-light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.theme-light input:focus,
+html.theme-light select:focus,
+html.theme-light textarea:focus {
+  border-color: #f59e0b !important;
+  outline: none;
+}
+
+html.theme-light select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Modales y Overlays */
+html.theme-light .bg-black\/70,
+html.theme-light .bg-black\/80 {
+  background-color: rgba(15, 23, 42, 0.45) !important;
+}
+
+/* Botones de navegación inactivos */
+html.theme-light nav button.text-slate-300:not(.bg-amber-500) {
+  color: #475569 !important;
+}
+
+html.theme-light nav button.text-slate-300:not(.bg-amber-500):hover {
+  color: #0f172a !important;
+  background-color: #f1f5f9 !important;
+}
+
+/* Estados de Alerta y Tarjetas de Riesgo */
+html.theme-light .bg-amber-500\/5,
+html.theme-light .bg-amber-500\/10,
+html.theme-light .bg-amber-500\/15 {
+  background-color: #fefce8 !important;
+  border-color: #fde047 !important;
+}
+
+html.theme-light .bg-red-500\/5,
+html.theme-light .bg-red-500\/10,
+html.theme-light .bg-red-500\/20 {
+  background-color: #fef2f2 !important;
+}
+
+html.theme-light .text-red-300 {
+  color: #b91c1c !important;
+}
+
+html.theme-light .bg-emerald-500\/20 {
+  background-color: #ecfdf5 !important;
+}
+
+html.theme-light .text-emerald-300 {
+  color: #047857 !important;
+}
+
+html.theme-light .bg-blue-500\/10,
+html.theme-light .bg-blue-500\/20 {
+  background-color: #eff6ff !important;
+}
+
+html.theme-light .text-blue-300 {
+  color: #1d4ed8 !important;
+}
+
+/* Scrollbar en tema claro */
+html.theme-light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+html.theme-light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+html.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
