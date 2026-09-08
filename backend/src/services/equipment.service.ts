@@ -1,6 +1,6 @@
 import { Equipment, EquipmentStatus, EquipmentType } from '../domain/types.js';
 import { IEquipmentRepository } from '../repositories/interfaces.js';
-import { NotFoundError } from '../core/errors/app-error.js';
+import { NotFoundError, ValidationError } from '../core/errors/app-error.js';
 import { BUSINESS_RULES_CONFIG } from '../core/constants/index.js';
 
 export class EquipmentService {
@@ -27,12 +27,25 @@ export class EquipmentService {
     last_maintenance_horometer?: number;
   }): Promise<Equipment> {
     const horometer = data.horometer ?? 0;
-    const interval = data.maintenance_interval_hours ?? BUSINESS_RULES_CONFIG.DEFAULT_MAINTENANCE_INTERVAL_HOURS;
+    const interval =
+      data.maintenance_interval_hours ?? BUSINESS_RULES_CONFIG.DEFAULT_MAINTENANCE_INTERVAL_HOURS;
     const lastPm = data.last_maintenance_horometer ?? 0;
-    
+    if (
+      ![horometer, interval, lastPm].every(Number.isFinite) ||
+      horometer < 0 ||
+      interval <= 0 ||
+      lastPm < 0 ||
+      lastPm > horometer
+    )
+      throw new ValidationError('Horómetro o ciclo de mantenimiento inválido.');
+    const sameType = (await this.equipmentRepo.findAll()).find((e) => e.type === data.type);
+    if (sameType && interval !== sameType.maintenance_interval_hours)
+      throw new ValidationError(
+        `El intervalo del tipo ${data.type} es ${sameType.maintenance_interval_hours}h. Debe ser el mismo para todos sus equipos.`
+      );
+
     // Regla 2: Si el horómetro ya alcanzó o superó el umbral, inicia BLOQUEADO
-    const status: EquipmentStatus =
-      horometer >= lastPm + interval ? 'BLOQUEADO' : 'DISPONIBLE';
+    const status: EquipmentStatus = horometer >= lastPm + interval ? 'BLOQUEADO' : 'DISPONIBLE';
 
     return this.equipmentRepo.create({
       code: data.code.trim().toUpperCase(),
@@ -56,7 +69,11 @@ export class EquipmentService {
     }
 
     const nextThreshold = equipment.last_maintenance_horometer + equipment.maintenance_interval_hours;
-    if (equipment.horometer >= nextThreshold && equipment.status !== 'BLOQUEADO' && equipment.status !== 'EN_MANTENIMIENTO') {
+    if (
+      equipment.horometer >= nextThreshold &&
+      equipment.status !== 'BLOQUEADO' &&
+      equipment.status !== 'EN_MANTENIMIENTO'
+    ) {
       return this.equipmentRepo.updateStatus(equipmentId, 'BLOQUEADO');
     }
     return equipment;
@@ -65,7 +82,10 @@ export class EquipmentService {
   /**
    * Suma horas de trabajo al horómetro y bloquea si cruza el umbral.
    */
-  async addWorkedHours(equipmentId: string, hours: number): Promise<{ equipment: Equipment; newlyBlocked: boolean }> {
+  async addWorkedHours(
+    equipmentId: string,
+    hours: number
+  ): Promise<{ equipment: Equipment; newlyBlocked: boolean }> {
     const equipment = await this.equipmentRepo.findById(equipmentId);
     if (!equipment) {
       throw new NotFoundError('Equipo minero', equipmentId);
@@ -73,7 +93,7 @@ export class EquipmentService {
 
     const newHorometer = Number((equipment.horometer + hours).toFixed(2));
     const nextThreshold = equipment.last_maintenance_horometer + equipment.maintenance_interval_hours;
-    
+
     let nextStatus = equipment.status;
     let newlyBlocked = false;
 

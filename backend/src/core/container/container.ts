@@ -12,7 +12,7 @@ export const TOKENS = {
   MaintenanceService: Symbol('MaintenanceService'),
   ProjectionService: Symbol('ProjectionService'),
   AuditService: Symbol('AuditService'),
-  ApiController: Symbol('ApiController'),
+  ApiController: Symbol('ApiController')
 } as const;
 
 export type Token = symbol | string;

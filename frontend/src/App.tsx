@@ -1,226 +1,570 @@
-import React, { useState, useEffect } from 'react';
-import { Navbar } from './components/Navbar.js';
-import { DashboardPage } from './pages/DashboardPage.js';
-import { ShiftsPage } from './pages/ShiftsPage.js';
-import { EquipmentPage } from './pages/EquipmentPage.js';
-import { OperatorsPage } from './pages/OperatorsPage.js';
-import { ProjectionPage } from './pages/ProjectionPage.js';
-import { AssignmentModal } from './components/AssignmentModal.js';
-import { CloseShiftModal } from './components/CloseShiftModal.js';
-import { MaintenanceModal } from './components/MaintenanceModal.js';
-import { Equipment, Operator, Shift, ProjectionItem } from './types.js';
-import { api } from './services/api.js';
-import { AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  LayoutDashboard,
+  CalendarDays,
+  Truck,
+  Users,
+  ChartNoAxesCombined,
+  Activity,
+  LogOut,
+  ChevronRight,
+  Bell,
+  Plus,
+  RefreshCw,
+  Mountain,
+  ArrowRight,
+  ShieldCheck,
+  LockKeyhole,
+  Sun,
+  Moon,
+  Menu,
+  X,
+  CheckCircle2
+} from 'lucide-react';
+import { api, User, setApiUser, ApiError } from './services/api';
+import {
+  Dashboard,
+  Shifts,
+  Fleet,
+  Operators,
+  Projection,
+  OperationsPage,
+  PageData,
+  Action
+} from './pages/ControlPages';
+import { ShiftPlanner } from './components/ShiftPlanner';
+import { OperationForm } from './components/OperationForm';
+import { ErrorBox, today } from './components/ui';
 
-export function App() {
-  const [currentTab, setCurrentTab] = useState('dashboard');
-  const [equipment, setEquipment] = useState<Equipment[]>([]);
-  const [operators, setOperators] = useState<Operator[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [projection, setProjection] = useState<ProjectionItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Tema: Pantalla Blanca (Light) u Oscura (Dark)
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const saved = localStorage.getItem('minefleet-theme');
-    return saved === 'light' ? 'light' : 'dark';
-  });
-
+const pages = [
+  {
+    id: 'dashboard',
+    name: 'Vista general',
+    icon: LayoutDashboard,
+    title: 'Panel de control',
+    description: 'Toda tu operación, en una sola vista.'
+  },
+  {
+    id: 'shifts',
+    name: 'Turnos y asignaciones',
+    icon: CalendarDays,
+    title: 'Turnos y asignaciones',
+    description: 'Organiza las jornadas y coordina los recursos de tu operación.'
+  },
+  {
+    id: 'equipment',
+    name: 'Equipos y mantenimiento',
+    icon: Truck,
+    title: 'Equipos y mantenimiento',
+    description: 'Controla el uso, la disponibilidad y el historial de tu flota.'
+  },
+  {
+    id: 'operators',
+    name: 'Operadores',
+    icon: Users,
+    title: 'Operadores y certificaciones',
+    description: 'Un equipo preparado empieza con operadores habilitados.'
+  },
+  {
+    id: 'projection',
+    name: 'Proyección a 7 días',
+    icon: ChartNoAxesCombined,
+    title: 'Proyección de mantenimiento',
+    description: 'Anticípate a los próximos mantenimientos con tu planificación real.'
+  },
+  {
+    id: 'operations',
+    name: 'Trazabilidad y servicios',
+    icon: Activity,
+    title: 'Trazabilidad y servicios',
+    description: 'Consulta la actividad, las entregas y los eventos pendientes.'
+  }
+];
+function Brand() {
+  return (
+    <div className="brand">
+      <span>
+        <Mountain size={23} />
+      </span>
+      <div>
+        Mine<span>Fleet</span>
+        <small>CONTROL DE OPERACIONES</small>
+      </div>
+    </div>
+  );
+}
+function Login({ onLogin }: { onLogin: (user: User) => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>();
+  return (
+    <div className="login-page">
+      <section className="login-story">
+        <Brand />
+        <div className="login-story-content">
+          <span className="eyebrow">INTELIGENCIA PARA TU OPERACIÓN</span>
+          <h1>
+            Cada equipo.
+            <br />
+            Cada turno.
+            <br />
+            <em>Bajo control.</em>
+          </h1>
+          <p>Conecta tu planificación con la realidad de la flota. Más visibilidad, mejores decisiones.</p>
+          <div className="login-features">
+            <span>
+              <CheckCircle2 size={18} /> Asignaciones validadas
+            </span>
+            <span>
+              <CheckCircle2 size={18} /> Mantenimiento anticipado
+            </span>
+            <span>
+              <CheckCircle2 size={18} /> Trazabilidad de cada operación
+            </span>
+          </div>
+        </div>
+        <div className="mine-landscape" aria-hidden="true">
+          <svg viewBox="0 0 700 230">
+            <path d="M0 220 150 65 210 120 350 0 525 175 590 105 700 220" />
+            <path d="M0 220 180 135 280 210 350 110 435 190 500 155 700 220" />
+            <path d="M0 220 210 188 350 230 540 192 700 230" />
+          </svg>
+        </div>
+        <footer>MineFleet · Gestión de flota minera</footer>
+      </section>
+      <section className="login-form-area">
+        <div className="login-form">
+          <span className="login-lock">
+            <LockKeyhole size={25} />
+          </span>
+          <h2>Bienvenido a MineFleet</h2>
+          <p>Inicia sesión para acceder a tu operación.</p>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              setError(undefined);
+              try {
+                onLogin(await api.login(email, password));
+              } catch (err) {
+                setError(err);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <label>
+              Correo electrónico
+              <input
+                type="email"
+                autoComplete="username"
+                required
+                placeholder="tu.correo@empresa.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </label>
+            <label>
+              Contraseña
+              <input
+                type="password"
+                autoComplete="current-password"
+                required
+                placeholder="Ingresa tu contraseña"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+            <ErrorBox error={error} />
+            <button className="button primary" disabled={busy}>
+              {busy ? 'Verificando acceso…' : 'Iniciar sesión'}
+              <ArrowRight size={18} />
+            </button>
+          </form>
+          <div className="login-security">
+            <ShieldCheck size={16} /> Acceso seguro · Sesión protegida
+          </div>
+        </div>
+        <footer>¿Necesitas acceso? Contacta al administrador de tu operación.</footer>
+      </section>
+    </div>
+  );
+}
+const empty: PageData = {
+  equipment: [],
+  operators: [],
+  shifts: [],
+  projection: [],
+  maintenance: [],
+  audit: [],
+  operations: null
+};
+export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [checking, setChecking] = useState(true);
+  const [authError, setAuthError] = useState<unknown>();
+  const [data, setData] = useState<PageData>(empty);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<unknown>();
+  const [projectionWarning, setProjectionWarning] = useState('');
+  const [updated, setUpdated] = useState<Date>();
+  const [page, setPage] = useState(() =>
+    pages.some((p) => p.id === location.hash.slice(1)) ? location.hash.slice(1) : 'dashboard'
+  );
+  const [mobile, setMobile] = useState(false);
+  const [planner, setPlanner] = useState(false);
+  const [action, setAction] = useState<Action | null>(null);
+  const [toast, setToast] = useState('');
+  const [dark, setDark] = useState(() => localStorage.getItem('minefleet:theme') === 'dark');
   useEffect(() => {
-    if (theme === 'light') {
-      document.documentElement.classList.add('theme-light');
-    } else {
-      document.documentElement.classList.remove('theme-light');
-    }
-    localStorage.setItem('minefleet-theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    localStorage.setItem('minefleet:theme', dark ? 'dark' : 'light');
+  }, [dark]);
+  const signIn = (u: User) => {
+    setApiUser(u.id);
+    setUser(u);
+    setAuthError(undefined);
   };
-
-  // Modals state
-  const [assignmentModalShift, setAssignmentModalShift] = useState<Shift | null>(null);
-  const [closeModalShift, setCloseModalShift] = useState<Shift | null>(null);
-  const [maintenanceModalEq, setMaintenanceModalEq] = useState<Equipment | null>(null);
-
-  // Toast notification banner
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' | 'info' } | null>(null);
-
-  const showToast = (message: string, type: 'success' | 'warning' | 'info' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 5000);
-  };
-
-  const loadData = async () => {
+  const checkSession = useCallback(async () => {
+    setChecking(true);
+    setAuthError(undefined);
     try {
-      const [eqData, opData, shiftData, projData] = await Promise.all([
+      signIn(await api.me());
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 401)) setAuthError(err);
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+  useEffect(() => {
+    void checkSession();
+    const expired = () => {
+      setUser(null);
+      setLoaded(false);
+      setData(empty);
+      setPlanner(false);
+      setAction(null);
+    };
+    window.addEventListener('minefleet:unauthorized', expired);
+    return () => window.removeEventListener('minefleet:unauthorized', expired);
+  }, [checkSession]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(undefined);
+    try {
+      const [equipment, operators, shifts, projection, maintenance, audit, operations] = await Promise.all([
         api.getEquipment(),
         api.getOperators(),
         api.getShifts(),
-        api.get7DayProjection()
+        api.get7DayProjection(),
+        api.getMaintenanceHistory(),
+        api.getAudit(),
+        api.getOperations()
       ]);
-      setEquipment(eqData);
-      setOperators(opData);
-      setShifts(shiftData);
-      setProjection(projData.projection);
-    } catch (err: any) {
-      console.error('Error cargando datos:', err);
+      setData({
+        equipment,
+        operators,
+        shifts,
+        projection: projection.projection,
+        maintenance,
+        audit,
+        operations
+      });
+      setProjectionWarning(
+        projection.isDegraded
+          ? 'Proyección no disponible: se muestran solo los estados actuales. No interpretes los valores de uso futuro como una previsión válida.'
+          : ''
+      );
+      setUpdated(new Date());
+      setLoaded(true);
+    } catch (err) {
+      setError(err);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
   }, []);
-
-  const handleShiftClosed = (result: any) => {
-    loadData();
-    const blockedCount = result.blockedEquipment?.length || 0;
-    if (blockedCount > 0) {
-      showToast(
-        `Turno cerrado exitosamente. ¡ALERTA: ${blockedCount} equipo(s) superaron su intervalo de mantenimiento y quedaron BLOQUEADOS!`,
-        'warning'
-      );
-    } else {
-      showToast(`Turno cerrado exitosamente con ${result.shift?.actual_duration_hours}h reales.`, 'success');
-    }
+  useEffect(() => {
+    if (user) void load();
+  }, [user, load]);
+  useEffect(() => {
+    if (!user) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible' && !planner && !action) void load();
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [user, load, planner, action]);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(''), 8000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  const navigate = (id: string) => {
+    setPage(id);
+    location.hash = id;
+    setMobile(false);
   };
-
-  const handleMaintenanceSuccess = (data: any) => {
-    loadData();
-    showToast(
-      `Mantenimiento de ${data.equipment.code} registrado. Equipo LIBERADO a estado DISPONIBLE. Siguiente umbral: ${data.equipment.last_maintenance_horometer + data.equipment.maintenance_interval_hours}h.`,
-      'success'
+  useEffect(() => {
+    const changed = () => {
+      const id = location.hash.slice(1);
+      if (pages.some((p) => p.id === id)) setPage(id);
+    };
+    window.addEventListener('hashchange', changed);
+    return () => window.removeEventListener('hashchange', changed);
+  }, []);
+  if (checking)
+    return (
+      <div className="loading-screen">
+        <span className="spinner" /> Comprobando sesión…
+      </div>
     );
+  if (authError)
+    return (
+      <div className="loading-screen">
+        <ErrorBox error={authError} />
+        <button className="button primary" onClick={() => void checkSession()}>
+          Reintentar conexión
+        </button>
+      </div>
+    );
+  if (!user) return <Login onLogin={signIn} />;
+  const current = pages.find((p) => p.id === page)!;
+  const canEdit = user.role === 'SUPERVISOR';
+  const props = { ...data, canEdit, onAction: setAction, navigate, onPlan: () => setPlanner(true) };
+  const changed = (message: string) => {
+    setToast(message);
+    void load();
   };
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col transition-colors duration-200">
-      {/* Barra de Navegación Superior */}
-      <Navbar
-        currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        onDataReset={() => {
-          loadData();
-          showToast('Base de datos restablecida a los casos de prueba solicitados.', 'info');
-        }}
-      />
-
-      {/* Toast Notification */}
-      {toast && (
-        <div className="fixed top-20 right-4 z-50 max-w-md animate-fade-in">
-          <div
-            className={`p-4 rounded-xl shadow-2xl border flex items-start space-x-3 ${
-              toast.type === 'warning'
-                ? 'bg-amber-950/90 border-amber-500 text-amber-200'
-                : toast.type === 'info'
-                ? 'bg-blue-950/90 border-blue-500 text-blue-200'
-                : 'bg-emerald-950/90 border-emerald-500 text-emerald-200'
-            }`}
-          >
-            {toast.type === 'warning' ? (
-              <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-            ) : (
-              <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-            )}
-            <div className="text-xs font-medium leading-relaxed">{toast.message}</div>
+    <div className="app-shell">
+      {mobile && <div className="sidebar-backdrop" onClick={() => setMobile(false)} />}
+      <aside className={`sidebar ${mobile ? 'open' : ''}`}>
+        <Brand />
+        <button
+          className="mobile-close icon-button"
+          aria-label="Cerrar menú"
+          onClick={() => setMobile(false)}
+        >
+          <X size={20} />
+        </button>
+        <div className="workspace-selector">
+          <span className="workspace-avatar">
+            <Mountain size={19} />
+          </span>
+          <div>
+            <strong>Operación minera</strong>
+            <small>Centro de control</small>
+          </div>
+          <ChevronRight size={14} />
+        </div>
+        <div className="nav-label">OPERACIÓN</div>
+        <nav>
+          {pages.slice(0, 4).map((p) => (
+            <button key={p.id} className={p.id === page ? 'active' : ''} onClick={() => navigate(p.id)}>
+              <p.icon size={18} />
+              <span>{p.name}</span>
+              {p.id === 'shifts' && (
+                <small>{data.shifts.filter((s) => s.status === 'PROGRAMADO').length}</small>
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="nav-label">ANÁLISIS Y SEGUIMIENTO</div>
+        <nav>
+          {pages.slice(4).map((p) => (
+            <button key={p.id} className={p.id === page ? 'active' : ''} onClick={() => navigate(p.id)}>
+              <p.icon size={18} />
+              <span>{p.name}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="sidebar-note">
+            <ShieldCheck size={19} />
+            <strong>Una operación más segura</strong>
+            <p>Valida recursos y anticipa mantenimientos en cada jornada.</p>
+          </div>
+          <button className="theme-button" onClick={() => setDark(!dark)}>
+            {dark ? <Sun size={17} /> : <Moon size={17} />} {dark ? 'Apariencia clara' : 'Apariencia oscura'}
+          </button>
+          <div className="user-card">
+            <span className="user-avatar">
+              {user.name
+                .split(' ')
+                .slice(0, 2)
+                .map((n) => n[0])
+                .join('')}
+            </span>
+            <div>
+              <strong>{user.name}</strong>
+              <small>{canEdit ? 'Supervisor' : 'Solo consulta'}</small>
+            </div>
+            <button
+              className="icon-button"
+              aria-label="Cerrar sesión"
+              onClick={async () => {
+                try {
+                  await api.logout();
+                  setUser(null);
+                  setLoaded(false);
+                  setData(empty);
+                  setApiUser('anonymous');
+                } catch (err) {
+                  setError(err);
+                }
+              }}
+            >
+              <LogOut size={17} />
+            </button>
           </div>
         </div>
-      )}
-
-      {/* Contenido Principal */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 space-y-3">
-            <span className="w-8 h-8 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
-            <p className="text-xs text-slate-400">Cargando flota minera...</p>
+      </aside>
+      <div className="main-shell">
+        <header className="topbar">
+          <div className="breadcrumbs">
+            <button
+              className="icon-button menu-toggle"
+              aria-label="Abrir menú"
+              onClick={() => setMobile(true)}
+            >
+              <Menu size={20} />
+            </button>
+            <span>Operación minera</span>
+            <ChevronRight size={14} />
+            <strong>{current.name}</strong>
           </div>
-        ) : (
-          <>
-            {currentTab === 'dashboard' && (
-              <DashboardPage
-                equipment={equipment}
-                operators={operators}
-                shifts={shifts}
-                projection={projection}
-                setCurrentTab={setCurrentTab}
-                onOpenCloseShift={(s) => setCloseModalShift(s)}
-              />
-            )}
-
-            {currentTab === 'shifts' && (
-              <ShiftsPage
-                shifts={shifts}
-                equipment={equipment}
-                operators={operators}
-                onOpenNewAssignment={(s) => setAssignmentModalShift(s)}
-                onOpenCloseShift={(s) => setCloseModalShift(s)}
-                onRefresh={loadData}
-              />
-            )}
-
-            {currentTab === 'equipment' && (
-              <EquipmentPage
-                equipment={equipment}
-                onOpenMaintenanceModal={(eq) => setMaintenanceModalEq(eq)}
-                onRefresh={loadData}
-              />
-            )}
-
-            {currentTab === 'operators' && (
-              <OperatorsPage
-                operators={operators}
-                onRefresh={loadData}
-              />
-            )}
-
-            {currentTab === 'projection' && (
-              <ProjectionPage
-                onRefresh={loadData}
-              />
-            )}
-          </>
-        )}
-      </main>
-
-      {/* Modales */}
-      {assignmentModalShift && (
-        <AssignmentModal
-          shift={assignmentModalShift}
-          equipmentList={equipment}
-          operatorsList={operators}
-          isOpen={!!assignmentModalShift}
-          onClose={() => setAssignmentModalShift(null)}
-          onSuccess={() => {
-            loadData();
-            showToast('Asignación registrada exitosamente.', 'success');
-          }}
+          <div className="topbar-right">
+            <span className={`connection ${error ? 'offline' : ''}`}>
+              <i />
+              {error ? 'Conexión interrumpida' : loaded ? 'Datos sincronizados' : 'Conectando'}
+            </span>
+            <span className="topbar-divider" />
+            <button
+              className="icon-button"
+              aria-label="Ver alertas y trazabilidad"
+              onClick={() => navigate('operations')}
+            >
+              <Bell size={18} />
+            </button>
+            <span className="top-avatar">{user.name[0]}</span>
+          </div>
+        </header>
+        <main>
+          <div className="page-heading">
+            <div>
+              <span className="eyebrow">CENTRO DE OPERACIONES</span>
+              <h1>{current.title}</h1>
+              <p>{current.description}</p>
+            </div>
+            <div className="heading-actions">
+              <button
+                className="button secondary refresh"
+                aria-label="Actualizar datos"
+                disabled={loading}
+                onClick={() => void load()}
+              >
+                <RefreshCw size={16} className={loading ? 'spin' : ''} />
+              </button>
+              {canEdit && (
+                <button className="button primary" onClick={() => setPlanner(true)}>
+                  <Plus size={17} /> Programar turno
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="page-meta">
+            <span>
+              <CalendarDays size={14} />
+              {new Date(today() + 'T12:00:00').toLocaleDateString('es-PE', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+              })}
+            </span>
+            <span>
+              {updated
+                ? `Última actualización ${updated.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`
+                : 'Cargando información'}{' '}
+              · Perú, UTC−5
+            </span>
+          </div>
+          <ErrorBox error={error} />
+          {projectionWarning && (
+            <div role="alert" className="notice warning">
+              {projectionWarning}
+            </div>
+          )}
+          {!loaded ? (
+            loading ? (
+              <div className="loading-screen inner">
+                <span className="spinner" /> Cargando la operación…
+              </div>
+            ) : (
+              <div className="empty">No se pudieron cargar los datos. Usa Actualizar para reintentar.</div>
+            )
+          ) : (
+            <>
+              <div className="page-content" key={page}>
+                {page === 'dashboard' && <Dashboard {...props} />}
+                {page === 'shifts' && <Shifts {...props} />}
+                {page === 'equipment' && <Fleet {...props} />}
+                {page === 'operators' && <Operators {...props} />}
+                {page === 'projection' && <Projection {...props} />}
+                {page === 'operations' && (
+                  <OperationsPage
+                    operations={data.operations}
+                    audit={data.audit}
+                    canEdit={canEdit}
+                    retry={async (id) => {
+                      try {
+                        await api.retryEvent(id);
+                        changed('Evento programado para reintento.');
+                      } catch (err) {
+                        setError(err);
+                      }
+                    }}
+                  />
+                )}
+              </div>
+              <footer className="main-footer">
+                <span>MineFleet · Control de flota y mantenimiento</span>
+                <span>
+                  <ShieldCheck size={13} /> Operaciones con trazabilidad
+                </span>
+              </footer>
+            </>
+          )}
+        </main>
+      </div>
+      {planner && (
+        <ShiftPlanner
+          equipment={data.equipment}
+          operators={data.operators}
+          shifts={data.shifts}
+          onClose={() => setPlanner(false)}
+          onSuccess={() => changed('Turno creado con todas sus asignaciones.')}
         />
       )}
-
-      {closeModalShift && (
-        <CloseShiftModal
-          shift={closeModalShift}
-          isOpen={!!closeModalShift}
-          onClose={() => setCloseModalShift(null)}
-          onSuccess={handleShiftClosed}
+      {action && (
+        <OperationForm
+          action={action}
+          data={data}
+          user={user}
+          onClose={() => setAction(null)}
+          onSuccess={changed}
         />
       )}
-
-      {maintenanceModalEq && (
-        <MaintenanceModal
-          equipment={maintenanceModalEq}
-          isOpen={!!maintenanceModalEq}
-          onClose={() => setMaintenanceModalEq(null)}
-          onSuccess={handleMaintenanceSuccess}
-        />
+      {toast && (
+        <div className="toast" role="status">
+          <CheckCircle2 size={20} />
+          <span>{toast}</span>
+          <button aria-label="Cerrar notificación" className="icon-button" onClick={() => setToast('')}>
+            <X size={17} />
+          </button>
+        </div>
       )}
     </div>
   );
 }
-
-export default App;

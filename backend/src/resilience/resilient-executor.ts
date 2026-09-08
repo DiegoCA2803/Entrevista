@@ -41,16 +41,22 @@ export class ResilientExecutor {
       health.lastFailureTime &&
       now - health.lastFailureTime < this.cooldownPeriodMs
     ) {
-      console.warn(`[SOA CircuitBreaker] Servicio "${serviceName}" en estado DOWN. Ejecutando fallback inmediato.`);
+      console.warn(
+        `[SOA CircuitBreaker] Servicio "${serviceName}" en estado DOWN. Ejecutando fallback inmediato.`
+      );
       try {
-        const fallbackResult = await fallbackAction(new Error(`Servicio ${serviceName} temporalmente inhabilitado por fallos reiterados.`));
+        const fallbackResult = await fallbackAction(
+          new Error(`Servicio ${serviceName} temporalmente inhabilitado por fallos reiterados.`)
+        );
         return {
           result: fallbackResult,
           isDegraded: true,
           warning: `Servicio ${serviceName} en degradación elegante (Circuit Breaker abierto).`
         };
       } catch (fallbackError: any) {
-        throw new Error(`Fallo crítico: ni el servicio primario ni el fallback de ${serviceName} respondieron.`);
+        throw new Error(
+          `Fallo crítico: ni el servicio primario ni el fallback de ${serviceName} respondieron.`
+        );
       }
     }
 

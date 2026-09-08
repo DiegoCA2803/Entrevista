@@ -1,4 +1,5 @@
-export type EquipmentType = 'CAMION_ACARREO' | 'EXCAVADORA' | 'PERFORADORA' | 'CARGADOR_FRONTAL' | 'TRACTOR_ORUGA';
+export type EquipmentType =
+  'CAMION_ACARREO' | 'EXCAVADORA' | 'PERFORADORA' | 'CARGADOR_FRONTAL' | 'TRACTOR_ORUGA';
 
 export type EquipmentStatus = 'DISPONIBLE' | 'BLOQUEADO' | 'EN_MANTENIMIENTO';
 

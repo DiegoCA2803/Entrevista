@@ -53,7 +53,9 @@ export class PostgresEquipmentRepository implements IEquipmentRepository {
     return res.rows[0] || null;
   }
 
-  async create(data: Omit<Equipment, 'id' | 'created_at' | 'updated_at'> & { id?: string }): Promise<Equipment> {
+  async create(
+    data: Omit<Equipment, 'id' | 'created_at' | 'updated_at'> & { id?: string }
+  ): Promise<Equipment> {
     const id = data.id || crypto.randomUUID();
     const res = await this.pool.query(
       `INSERT INTO equipment (id, code, name, type, horometer, maintenance_interval_hours, last_maintenance_horometer, status)
@@ -74,7 +76,11 @@ export class PostgresEquipmentRepository implements IEquipmentRepository {
     return res.rows[0];
   }
 
-  async updateHorometerAndStatus(id: string, newHorometer: number, status: EquipmentStatus): Promise<Equipment> {
+  async updateHorometerAndStatus(
+    id: string,
+    newHorometer: number,
+    status: EquipmentStatus
+  ): Promise<Equipment> {
     const res = await this.pool.query(
       `UPDATE equipment 
        SET horometer = $1, status = $2, updated_at = CURRENT_TIMESTAMP
@@ -100,10 +106,14 @@ export class PostgresEquipmentRepository implements IEquipmentRepository {
     return res.rows[0];
   }
 
-  async resetMaintenanceCycle(id: string, horometerAtPm: number, status: EquipmentStatus): Promise<Equipment> {
+  async resetMaintenanceCycle(
+    id: string,
+    horometerAtPm: number,
+    status: EquipmentStatus
+  ): Promise<Equipment> {
     const res = await this.pool.query(
       `UPDATE equipment 
-       SET last_maintenance_horometer = $1, status = $2, updated_at = CURRENT_TIMESTAMP
+       SET last_maintenance_horometer = $1, horometer = $1, status = $2, updated_at = CURRENT_TIMESTAMP
        WHERE id = $3
        RETURNING id, code, name, type, horometer::float, maintenance_interval_hours::float, 
                  last_maintenance_horometer::float, status, created_at, updated_at`,
@@ -151,7 +161,9 @@ export class PostgresOperatorRepository implements IOperatorRepository {
     return { ...res.rows[0], certifications: certs };
   }
 
-  async create(data: Omit<Operator, 'id' | 'created_at' | 'certifications'> & { id?: string }): Promise<Operator> {
+  async create(
+    data: Omit<Operator, 'id' | 'created_at' | 'certifications'> & { id?: string }
+  ): Promise<Operator> {
     const id = data.id || crypto.randomUUID();
     const res = await this.pool.query(
       `INSERT INTO operators (id, code, name, document_id, is_active)
@@ -169,7 +181,14 @@ export class PostgresOperatorRepository implements IOperatorRepository {
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, operator_id, equipment_type, TO_CHAR(issued_date, 'YYYY-MM-DD') as issued_date, 
                  TO_CHAR(expiration_date, 'YYYY-MM-DD') as expiration_date, institution, created_at`,
-      [id, cert.operator_id, cert.equipment_type, cert.issued_date, cert.expiration_date, cert.institution || null]
+      [
+        id,
+        cert.operator_id,
+        cert.equipment_type,
+        cert.issued_date,
+        cert.expiration_date,
+        cert.institution || null
+      ]
     );
     return res.rows[0];
   }
@@ -245,11 +264,11 @@ export class PostgresShiftRepository implements IShiftRepository {
   async create(data: Omit<Shift, 'id' | 'created_at' | 'assignments'>): Promise<Shift> {
     const id = crypto.randomUUID();
     const res = await this.pool.query(
-      `INSERT INTO shifts (id, code, date, period, planned_duration_hours, status)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO shifts (id, code, date, period, planned_duration_hours, status, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, code, TO_CHAR(date, 'YYYY-MM-DD') as date, period, planned_duration_hours::float,
                  actual_duration_hours::float, status, closed_at, closed_by, notes, created_at`,
-      [id, data.code, data.date, data.period, data.planned_duration_hours, data.status]
+      [id, data.code, data.date, data.period, data.planned_duration_hours, data.status, data.notes || null]
     );
     return { ...res.rows[0], assignments: [] };
   }
@@ -263,7 +282,7 @@ export class PostgresShiftRepository implements IShiftRepository {
   ): Promise<Shift> {
     const res = await this.pool.query(
       `UPDATE shifts
-       SET status = $1,
+       SET status = $1::varchar,
            actual_duration_hours = COALESCE($2, actual_duration_hours),
            closed_by = COALESCE($3, closed_by),
            notes = COALESCE($4, notes),
@@ -293,7 +312,7 @@ export class PostgresShiftRepository implements IShiftRepository {
       [shiftId]
     );
 
-    return res.rows.map(row => ({
+    return res.rows.map((row) => ({
       id: row.id,
       shift_id: row.shift_id,
       equipment_id: row.equipment_id,
@@ -375,7 +394,7 @@ export class PostgresShiftRepository implements IShiftRepository {
   async findAssignmentByShiftAndEquipment(shiftId: string, equipmentId: string): Promise<Assignment | null> {
     const res = await this.pool.query(
       `SELECT id, shift_id, equipment_id, operator_id, status, is_override FROM assignments 
-       WHERE shift_id = $1 AND equipment_id = $2`,
+       WHERE shift_id = $1 AND equipment_id = $2 AND status<>'CANCELADA'`,
       [shiftId, equipmentId]
     );
     return res.rows[0] || null;
@@ -384,7 +403,7 @@ export class PostgresShiftRepository implements IShiftRepository {
   async findAssignmentByShiftAndOperator(shiftId: string, operatorId: string): Promise<Assignment | null> {
     const res = await this.pool.query(
       `SELECT id, shift_id, equipment_id, operator_id, status, is_override FROM assignments 
-       WHERE shift_id = $1 AND operator_id = $2`,
+       WHERE shift_id = $1 AND operator_id = $2 AND status<>'CANCELADA'`,
       [shiftId, operatorId]
     );
     return res.rows[0] || null;
@@ -393,14 +412,14 @@ export class PostgresShiftRepository implements IShiftRepository {
   async findUpcomingAssignmentsForEquipment(equipmentId: string, fromDate: string): Promise<Assignment[]> {
     const res = await this.pool.query(
       `SELECT a.id, a.shift_id, a.equipment_id, a.operator_id, a.status, a.risk_reason,
-              s.date, s.period, s.planned_duration_hours::float, s.status as shift_status
+              TO_CHAR(s.date, 'YYYY-MM-DD') as date, s.period, s.planned_duration_hours::float, s.status as shift_status
        FROM assignments a
        JOIN shifts s ON a.shift_id = s.id
-       WHERE a.equipment_id = $1 AND s.date >= $2 AND s.status NOT IN ('CANCELADO', 'CERRADO')
+       WHERE a.equipment_id = $1 AND s.date >= $2 AND a.status NOT IN ('CANCELADA','COMPLETADA') AND s.status NOT IN ('CANCELADO', 'CERRADO')
        ORDER BY s.date ASC, s.period ASC`,
       [equipmentId, fromDate]
     );
-    return res.rows.map(row => ({
+    return res.rows.map((row) => ({
       id: row.id,
       shift_id: row.shift_id,
       equipment_id: row.equipment_id,
@@ -481,7 +500,14 @@ export class PostgresMaintenanceRepository implements IMaintenanceRepository {
       `INSERT INTO maintenance_records (id, equipment_id, horometer_at_maintenance, performed_by, notes, maintenance_type)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, equipment_id, date, horometer_at_maintenance::float, performed_by, notes, maintenance_type, created_at`,
-      [id, data.equipment_id, data.horometer_at_maintenance, data.performed_by, data.notes, data.maintenance_type]
+      [
+        id,
+        data.equipment_id,
+        data.horometer_at_maintenance,
+        data.performed_by,
+        data.notes,
+        data.maintenance_type
+      ]
     );
     return res.rows[0];
   }
@@ -496,8 +522,20 @@ export class PostgresAuditRepository implements IAuditRepository {
       `INSERT INTO audit_logs (id, action, entity_type, entity_id, details, performed_by)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, action, entity_type, entity_id, details, performed_by, created_at`,
-      [id, audit.action, audit.entity_type, audit.entity_id, JSON.stringify(audit.details), audit.performed_by]
+      [
+        id,
+        audit.action,
+        audit.entity_type,
+        audit.entity_id,
+        JSON.stringify(audit.details),
+        audit.performed_by
+      ]
     );
+    await this.pool.query(`INSERT INTO outbox_events(id,topic,payload) VALUES ($1,$2,$3)`, [
+      id,
+      audit.action,
+      JSON.stringify({ ...audit, id, created_at: res.rows[0].created_at })
+    ]);
     return {
       ...res.rows[0],
       details: typeof res.rows[0].details === 'string' ? JSON.parse(res.rows[0].details) : res.rows[0].details
@@ -510,7 +548,7 @@ export class PostgresAuditRepository implements IAuditRepository {
        FROM audit_logs ORDER BY created_at DESC LIMIT $1`,
       [limit]
     );
-    return res.rows.map(row => ({
+    return res.rows.map((row) => ({
       ...row,
       details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details
     }));

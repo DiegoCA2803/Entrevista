@@ -5,8 +5,6 @@ import { ShiftService } from '../services/shift.service.js';
 import { MaintenanceService } from '../services/maintenance.service.js';
 import { ProjectionService } from '../services/projection.service.js';
 import { AuditService } from '../services/audit.service.js';
-import { ResilientExecutor } from '../resilience/resilient-executor.js';
-import { seedDatabase } from '../seeds/seed.js';
 import { AppRepositories } from '../repositories/db.js';
 import { HTTP_STATUS } from '../core/constants/index.js';
 import { NotFoundError } from '../core/errors/app-error.js';
@@ -47,6 +45,13 @@ export class ApiController {
   createEquipment = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const eq = await this.equipmentService.createEquipment(req.body);
+      await this.auditService.log({
+        action: 'EQUIPMENT_REGISTERED',
+        entity_type: 'EQUIPMENT',
+        entity_id: eq.id,
+        performed_by: res.locals.user.email,
+        details: { code: eq.code, type: eq.type, horometer: eq.horometer }
+      });
       res.status(HTTP_STATUS.CREATED).json({ success: true, data: eq });
     } catch (err) {
       next(err);
@@ -68,6 +73,13 @@ export class ApiController {
   createOperator = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const op = await this.operatorService.createOperator(req.body);
+      await this.auditService.log({
+        action: 'OPERATOR_REGISTERED',
+        entity_type: 'OPERATOR',
+        entity_id: op.id,
+        performed_by: res.locals.user.email,
+        details: { code: op.code }
+      });
       res.status(HTTP_STATUS.CREATED).json({ success: true, data: op });
     } catch (err) {
       next(err);
@@ -77,8 +89,15 @@ export class ApiController {
   addCertification = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const cert = await this.operatorService.addCertification({
-        operator_id: String(req.params.id),
-        ...req.body
+        ...req.body,
+        operator_id: String(req.params.id)
+      });
+      await this.auditService.log({
+        action: 'CERTIFICATION_REGISTERED',
+        entity_type: 'OPERATOR',
+        entity_id: cert.operator_id,
+        performed_by: res.locals.user.email,
+        details: { equipment_type: cert.equipment_type, expiration_date: cert.expiration_date }
       });
       res.status(HTTP_STATUS.CREATED).json({ success: true, data: cert });
     } catch (err) {
@@ -110,7 +129,7 @@ export class ApiController {
 
   createShift = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const shift = await this.shiftService.createShift(req.body);
+      const shift = await this.shiftService.createDetailedShift(req.body, res.locals.user.email);
       res.status(HTTP_STATUS.CREATED).json({ success: true, data: shift });
     } catch (err) {
       next(err);
@@ -146,7 +165,7 @@ export class ApiController {
         equipment_id,
         operator_id,
         is_override,
-        override_by,
+        performed_by: res.locals.user.email,
         override_reason
       });
 
@@ -167,7 +186,7 @@ export class ApiController {
       const result = await this.shiftService.closeShift({
         shift_id: shiftId,
         actual_duration_hours,
-        closed_by,
+        closed_by: res.locals.user.email,
         notes
       });
 
@@ -179,6 +198,19 @@ export class ApiController {
 
   // ----------------------------------------------------
   // MANTENIMIENTO
+  cancelAssignment = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await this.shiftService.cancelAssignment(
+        String(req.params.id),
+        String(req.params.assignmentId),
+        req.body.reason,
+        res.locals.user.email
+      );
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
   // ----------------------------------------------------
   getAllMaintenance = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -191,7 +223,10 @@ export class ApiController {
 
   registerMaintenance = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const result = await this.maintenanceService.registerMaintenance(req.body);
+      const result = await this.maintenanceService.registerMaintenance({
+        ...req.body,
+        performed_by: res.locals.user.email
+      });
       res.status(HTTP_STATUS.CREATED).json({ success: true, data: result });
     } catch (err) {
       next(err);
@@ -214,33 +249,10 @@ export class ApiController {
   // ----------------------------------------------------
   // AUDITORÍA Y SALUD DEL SISTEMA (SOA Healthcheck)
   // ----------------------------------------------------
-  getHealth = async (req: Request, res: Response): Promise<void> => {
-    const servicesHealth = ResilientExecutor.getServicesHealth();
-    res.status(HTTP_STATUS.OK).json({
-      status: 'UP',
-      timestamp: new Date().toISOString(),
-      architecture: 'Layered + SOA with Graceful Degradation (DI Container wired)',
-      database: this.repos.isPostgres ? 'PostgreSQL Relational' : 'In-Memory Relational Engine',
-      services: servicesHealth
-    });
-  };
-
   getAuditLogs = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const logs = await this.auditService.getAllLogs();
       res.status(HTTP_STATUS.OK).json({ success: true, data: logs });
-    } catch (err) {
-      next(err);
-    }
-  };
-
-  // ----------------------------------------------------
-  // RESET DE DATOS DE DEMOSTRACIÓN (Para el evaluador)
-  // ----------------------------------------------------
-  resetDemoData = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const result = await seedDatabase(this.repos);
-      res.status(HTTP_STATUS.OK).json({ success: true, ...result });
     } catch (err) {
       next(err);
     }

@@ -1,6 +1,8 @@
 import { ProjectionItem, Shift, Equipment } from '../domain/types.js';
 import { IEquipmentRepository, IShiftRepository } from '../repositories/interfaces.js';
 import { ResilientExecutor } from '../resilience/resilient-executor.js';
+import { localDate } from '../domain/time.js';
+import { ValidationError } from '../core/errors/app-error.js';
 
 export class ProjectionService {
   constructor(
@@ -24,12 +26,18 @@ export class ProjectionService {
     isDegraded: boolean;
     warning?: string;
   }> {
-    const today = referenceDate || new Date().toISOString().split('T')[0];
-    
+    const today = referenceDate || localDate();
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(today) ||
+      !Number.isFinite(Date.parse(today)) ||
+      new Date(today).toISOString().slice(0, 10) !== today
+    )
+      throw new ValidationError('Fecha de proyección inválida.');
+
     // Calcular fecha + 7 días
     const startDateObj = new Date(today);
     const endDateObj = new Date(startDateObj);
-    endDateObj.setDate(endDateObj.getDate() + 7);
+    endDateObj.setUTCDate(endDateObj.getUTCDate() + 6);
     const endDate = endDateObj.toISOString().split('T')[0];
 
     const result = await ResilientExecutor.executeWithFallback(
@@ -57,7 +65,7 @@ export class ProjectionService {
     const upcomingShifts = await this.shiftRepo.findByDateRange(startDate, endDate);
 
     // Filtrar solo turnos programados o en curso
-    const activeShifts = upcomingShifts.filter(s => s.status === 'PROGRAMADO' || s.status === 'EN_CURSO');
+    const activeShifts = upcomingShifts.filter((s) => s.status === 'PROGRAMADO' || s.status === 'EN_CURSO');
 
     // Ordenar turnos cronológicamente por fecha y jornada (DIA antes que NOCHE)
     activeShifts.sort((a, b) => {
@@ -80,7 +88,9 @@ export class ProjectionService {
       let criticalPeriod: Shift['period'] | null = null;
 
       for (const shift of activeShifts) {
-        const assignment = shift.assignments?.find(a => a.equipment_id === eq.id && a.status !== 'CANCELADA');
+        const assignment = shift.assignments?.find(
+          (a) => a.equipment_id === eq.id && a.status !== 'CANCELADA'
+        );
         if (assignment) {
           scheduledCount++;
           const shiftHours = shift.planned_duration_hours;
@@ -134,7 +144,7 @@ export class ProjectionService {
    */
   private async calculateDegradedFallback(startDate: string, endDate: string): Promise<ProjectionItem[]> {
     const allEquipment = await this.equipmentRepo.findAll();
-    return allEquipment.map(eq => {
+    return allEquipment.map((eq) => {
       const nextThreshold = eq.last_maintenance_horometer + eq.maintenance_interval_hours;
       const hoursRemaining = Math.max(0, nextThreshold - eq.horometer);
       return {

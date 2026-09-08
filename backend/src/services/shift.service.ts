@@ -18,6 +18,7 @@ import {
   ConflictError
 } from '../core/errors/app-error.js';
 import { BUSINESS_RULES_CONFIG } from '../core/constants/index.js';
+import { shiftLastDate, shiftWindow } from '../domain/time.js';
 
 export class ShiftService {
   constructor(
@@ -49,6 +50,12 @@ export class ShiftService {
   }): Promise<Shift> {
     const plannedHours = data.planned_duration_hours ?? BUSINESS_RULES_CONFIG.DEFAULT_SHIFT_DURATION_HOURS;
     if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(data.date) ||
+      !['DIA', 'NOCHE'].includes(data.period) ||
+      !Number.isFinite(plannedHours)
+    )
+      throw new ValidationError('Fecha, jornada o duración inválidas.');
+    if (
       plannedHours < BUSINESS_RULES_CONFIG.MIN_SHIFT_DURATION_HOURS ||
       plannedHours > BUSINESS_RULES_CONFIG.MAX_SHIFT_DURATION_HOURS
     ) {
@@ -77,25 +84,26 @@ export class ShiftService {
   async validateAssignment(
     shiftId: string,
     equipmentId: string,
-    operatorId: string
+    operatorId: string,
+    draft?: Shift,
+    ignoreOwnAssignment = false
   ): Promise<AssignmentValidationResult> {
     const errors: string[] = [];
     const warnings: string[] = [];
-    let canOverride = true;
 
     // 1. Validar existencia y estado del turno
-    const shift = await this.shiftRepo.findById(shiftId);
+    const shift = draft || (await this.shiftRepo.findById(shiftId));
     if (!shift) {
       errors.push(`El turno con ID ${shiftId} no existe.`);
       return { valid: false, errors, warnings, can_override: false };
     }
 
     if (shift.status === 'CERRADO') {
-      errors.push(`El turno ${shift.code} (${shift.date}) ya está CERRADO. No se permiten nuevas asignaciones.`);
-      canOverride = false;
+      errors.push(
+        `El turno ${shift.code} (${shift.date}) ya está CERRADO. No se permiten nuevas asignaciones.`
+      );
     } else if (shift.status === 'CANCELADO') {
       errors.push(`El turno ${shift.code} está CANCELADO.`);
-      canOverride = false;
     }
 
     // 2. Validar Equipo
@@ -130,11 +138,10 @@ export class ShiftService {
         shiftId,
         equipmentId
       );
-      if (existingEquipmentAssignment) {
+      if (existingEquipmentAssignment && !ignoreOwnAssignment) {
         errors.push(
           `REGLA 7: El equipo ${equipment.code} ya está asignado en este mismo turno (${shift.code}). No puede duplicarse la asignación en el mismo turno.`
         );
-        canOverride = false; // Duplicación física imposible en el mismo turno
       }
     }
 
@@ -144,7 +151,9 @@ export class ShiftService {
       errors.push(`El operador con ID ${operatorId} no existe.`);
     } else {
       if (!operator.is_active) {
-        errors.push(`El operador ${operator.name} (${operator.code}) está inactivo en la plantilla de personal.`);
+        errors.push(
+          `El operador ${operator.name} (${operator.code}) está inactivo en la plantilla de personal.`
+        );
       }
 
       // Regla 6: Un operador no puede tener dos asignaciones en el mismo turno
@@ -152,11 +161,10 @@ export class ShiftService {
         shiftId,
         operatorId
       );
-      if (existingOperatorAssignment) {
+      if (existingOperatorAssignment && !ignoreOwnAssignment) {
         errors.push(
           `REGLA 6: El operador ${operator.name} (${operator.code}) ya tiene otra asignación activa en este mismo turno (${shift.code}). Un operador no puede operar dos equipos simultáneamente.`
         );
-        canOverride = false; // No es posible clonar al operador
       }
 
       // Regla 9: No se puede asignar un operador sin certificación vigente para ese tipo de equipo en esa fecha
@@ -164,7 +172,8 @@ export class ShiftService {
         const certResult = await this.operatorService.validateCertificationForShift(
           operatorId,
           equipment.type,
-          shift.date
+          shift.date,
+          shiftLastDate(shift.date, shift.period, shift.planned_duration_hours)
         );
 
         if (!certResult.isValid) {
@@ -173,18 +182,29 @@ export class ShiftService {
       }
     }
 
+    const currentWindow = shiftWindow(shift.date, shift.period, shift.planned_duration_hours);
+    for (const other of await this.shiftRepo.findAll()) {
+      if (other.id === shiftId || other.status === 'CANCELADO') continue;
+      const duration =
+        other.status === 'CERRADO' ? (other.actual_duration_hours ?? 0) : other.planned_duration_hours;
+      const window = shiftWindow(other.date, other.period, duration);
+      if (currentWindow.start >= window.end || window.start >= currentWindow.end) continue;
+      if (other.assignments?.some((a) => a.status !== 'CANCELADA' && a.equipment_id === equipmentId))
+        errors.push(`El equipo ya está asignado al turno ${other.code}, cuyo horario se superpone.`);
+      if (other.assignments?.some((a) => a.status !== 'CANCELADA' && a.operator_id === operatorId))
+        errors.push(`El operador ya está asignado al turno ${other.code}, cuyo horario se superpone.`);
+    }
     return {
       valid: errors.length === 0,
       errors,
       warnings,
-      can_override: canOverride && errors.length > 0
+      can_override: false
     };
   }
 
   /**
    * Crea una asignación evaluando todas las reglas.
-   * Si hay errores pero se autoriza excepción con justificación de supervisor,
-   * se guarda con trazabilidad de override.
+   * Las reglas de seguridad se aplican también a supervisores.
    */
   async createAssignment(data: {
     shift_id: string;
@@ -193,71 +213,35 @@ export class ShiftService {
     is_override?: boolean;
     override_by?: string;
     override_reason?: string;
+    performed_by?: string;
   }): Promise<Assignment> {
-    const validation = await this.validateAssignment(
-      data.shift_id,
-      data.equipment_id,
-      data.operator_id
-    );
+    const validation = await this.validateAssignment(data.shift_id, data.equipment_id, data.operator_id);
+    if (data.is_override)
+      throw new BusinessRuleViolationError(
+        'Las reglas de seguridad no admiten excepciones de supervisor.',
+        validation.errors.length ? validation.errors : ['No se permiten asignaciones forzadas.']
+      );
 
-    if (!validation.valid) {
-      if (data.is_override) {
-        if (!validation.can_override) {
-          throw new ConflictError(
-            `No se puede forzar la asignación debido a colisión física de recursos:\n- ${validation.errors.join('\n- ')}`
-          );
-        }
-
-        if (!data.override_by || data.override_by.trim().length === 0) {
-          throw new ValidationError(
-            'Para forzar una asignación es obligatorio indicar el usuario/código del supervisor autorizante.'
-          );
-        }
-
-        if (
-          !data.override_reason ||
-          data.override_reason.trim().length < BUSINESS_RULES_CONFIG.MIN_SUPERVISOR_OVERRIDE_REASON_LENGTH
-        ) {
-          throw new ValidationError(
-            `La justificación de la excepción de supervisor debe contener al menos ${BUSINESS_RULES_CONFIG.MIN_SUPERVISOR_OVERRIDE_REASON_LENGTH} caracteres explicativos.`
-          );
-        }
-      } else {
-        // Regla 11: Devolver TODAS las violaciones juntas con tipado de error formal
-        throw new BusinessRuleViolationError(
-          `Asignación rechazada por incumplir ${validation.errors.length} regla(s) de negocio:\n- ${validation.errors.join('\n- ')}`,
-          validation.errors
-        );
-      }
-    }
+    if (!validation.valid) throw new BusinessRuleViolationError('Asignación rechazada.', validation.errors);
 
     const assignment = await this.shiftRepo.createAssignment({
       shift_id: data.shift_id,
       equipment_id: data.equipment_id,
       operator_id: data.operator_id,
       status: 'PROGRAMADA',
-      is_override: !!data.is_override,
-      override_by: data.override_by ? data.override_by.trim() : null,
-      override_reason: data.override_reason ? data.override_reason.trim() : null,
-      override_at: data.is_override ? new Date().toISOString() : null
+      is_override: false,
+      override_by: null,
+      override_reason: null,
+      override_at: null
     });
 
-    if (data.is_override && this.auditService) {
-      await this.auditService.log({
-        action: 'SUPERVISOR_OVERRIDE_ASSIGNMENT',
-        entity_type: 'ASSIGNMENT',
-        entity_id: assignment.id,
-        details: {
-          shift_id: data.shift_id,
-          equipment_id: data.equipment_id,
-          operator_id: data.operator_id,
-          override_by: data.override_by,
-          override_reason: data.override_reason,
-          bypassed_rules: validation.errors
-        },
-        performed_by: data.override_by || 'SUPERVISOR'
-      });
-    }
+    await this.auditService?.log({
+      action: 'ASSIGNMENT_CREATED',
+      entity_type: 'ASSIGNMENT',
+      entity_id: assignment.id,
+      performed_by: data.performed_by || 'SYSTEM',
+      details: { shift_id: data.shift_id, equipment_id: data.equipment_id, operator_id: data.operator_id }
+    });
 
     return assignment;
   }
@@ -287,13 +271,13 @@ export class ShiftService {
       throw new NotFoundError('Turno minero', data.shift_id);
     }
 
-    if (shift.status === 'CERRADO') {
-      throw new ConflictError(`El turno ${shift.code} ya se encuentra cerrado.`);
+    if (shift.status === 'CERRADO' || shift.status === 'CANCELADO') {
+      throw new ConflictError(`El turno ${shift.code} ya se encuentra cerrado o cancelado.`);
     }
 
     const actualHours = Number(data.actual_duration_hours);
     if (
-      isNaN(actualHours) ||
+      !Number.isFinite(actualHours) ||
       actualHours < 0 ||
       actualHours > BUSINESS_RULES_CONFIG.MAX_SHIFT_DURATION_HOURS
     ) {
@@ -308,13 +292,32 @@ export class ShiftService {
 
     // 1. Obtener todas las asignaciones del turno
     const assignments = await this.shiftRepo.findAssignmentsByShiftId(data.shift_id);
+    const activeAssignments = assignments.filter((a) => a.status !== 'CANCELADA');
+    const violations: string[] = [];
+    if (actualHours > 0) {
+      for (const assignment of activeAssignments) {
+        const result = await this.validateAssignment(
+          shift.id,
+          assignment.equipment_id,
+          assignment.operator_id,
+          { ...shift, planned_duration_hours: actualHours },
+          true
+        );
+        violations.push(...result.errors);
+      }
+    }
+    if (violations.length)
+      throw new BusinessRuleViolationError(
+        'No se puede cerrar el turno con recursos no habilitados. Registra el mantenimiento o corrige las asignaciones.',
+        violations
+      );
 
     const affectedEquipment: Equipment[] = [];
     const blockedEquipment: Equipment[] = [];
     let flaggedUpcomingCount = 0;
 
     // 2. Por cada equipo asignado, sumar las horas trabajadas al horómetro
-    for (const assignment of assignments) {
+    for (const assignment of activeAssignments) {
       const { equipment, newlyBlocked } = await this.equipmentService.addWorkedHours(
         assignment.equipment_id,
         actualHours
@@ -330,10 +333,7 @@ export class ShiftService {
         blockedEquipment.push(equipment);
 
         // DECISIÓN 1: Marcar turnos futuros de este equipo como "EN RIESGO"
-        const upcoming = await this.shiftRepo.findUpcomingAssignmentsForEquipment(
-          equipment.id,
-          shift.date
-        );
+        const upcoming = await this.shiftRepo.findUpcomingAssignmentsForEquipment(equipment.id, shift.date);
 
         for (const upAssignment of upcoming) {
           if (upAssignment.shift_id !== shift.id) {
@@ -369,7 +369,7 @@ export class ShiftService {
           actual_hours: actualHours,
           assignments_count: assignments.length,
           blocked_equipment_count: blockedEquipment.length,
-          blocked_codes: blockedEquipment.map(e => e.code),
+          blocked_codes: blockedEquipment.map((e) => e.code),
           flagged_upcoming_count: flaggedUpcomingCount
         },
         performed_by: data.closed_by
@@ -382,5 +382,79 @@ export class ShiftService {
       blockedEquipment,
       flaggedUpcomingAssignmentsCount: flaggedUpcomingCount
     };
+  }
+
+  async createDetailedShift(
+    data: {
+      date: string;
+      period: ShiftPeriod;
+      planned_duration_hours: number;
+      notes?: string;
+      assignments: Array<{ equipment_id: string; operator_id: string }>;
+    },
+    actor: string
+  ): Promise<Shift> {
+    const code = `TUR-${data.date}-${data.period[0]}`;
+    if (await this.shiftRepo.findByCode(code))
+      throw new ConflictError('Ya existe un turno para esta fecha y jornada.');
+    const draft: Shift = {
+      id: 'new',
+      code,
+      date: data.date,
+      period: data.period,
+      planned_duration_hours: data.planned_duration_hours,
+      status: 'PROGRAMADO',
+      notes: data.notes
+    };
+    const errors: string[] = [];
+    const equipment = new Set<string>();
+    const operators = new Set<string>();
+    if (!data.assignments?.length)
+      throw new ValidationError('Agrega al menos una pareja de equipo y operador.');
+    for (const [index, pair] of data.assignments.entries()) {
+      const result = await this.validateAssignment('new', pair.equipment_id, pair.operator_id, draft);
+      errors.push(...result.errors.map((e) => `Asignación ${index + 1}: ${e}`));
+      if (equipment.has(pair.equipment_id))
+        errors.push(`Asignación ${index + 1}: equipo repetido en el formulario.`);
+      if (operators.has(pair.operator_id))
+        errors.push(`Asignación ${index + 1}: operador repetido en el formulario.`);
+      equipment.add(pair.equipment_id);
+      operators.add(pair.operator_id);
+    }
+    if (errors.length)
+      throw new BusinessRuleViolationError('Revisa las asignaciones. No se guardó ningún cambio.', errors);
+    const shift = await this.createShift(data);
+    for (const pair of data.assignments)
+      await this.createAssignment({ ...pair, shift_id: shift.id, performed_by: actor });
+    await this.auditService?.log({
+      action: 'SHIFT_SCHEDULED',
+      entity_type: 'SHIFT',
+      entity_id: shift.id,
+      performed_by: actor,
+      details: { code, assignments: data.assignments.length, notes: data.notes || '' }
+    });
+    return (await this.shiftRepo.findById(shift.id))!;
+  }
+
+  async cancelAssignment(shiftId: string, assignmentId: string, reason: string, actor: string) {
+    const assignment = await this.shiftRepo.findAssignmentById(assignmentId);
+    const shift = await this.shiftRepo.findById(shiftId);
+    if (!assignment || assignment.shift_id !== shiftId || !shift)
+      throw new NotFoundError('Asignación', assignmentId);
+    if (
+      shift.status === 'CERRADO' ||
+      shift.status === 'CANCELADO' ||
+      !['PROGRAMADA', 'EN_RIESGO'].includes(assignment.status)
+    )
+      throw new ConflictError('Solo pueden cancelarse asignaciones pendientes de un turno abierto.');
+    const result = await this.shiftRepo.updateAssignmentStatus(assignmentId, 'CANCELADA', reason);
+    await this.auditService?.log({
+      action: 'ASSIGNMENT_CANCELLED',
+      entity_type: 'ASSIGNMENT',
+      entity_id: assignmentId,
+      performed_by: actor,
+      details: { shift_id: shiftId, reason }
+    });
+    return result;
   }
 }

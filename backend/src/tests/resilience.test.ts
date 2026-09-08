@@ -24,7 +24,7 @@ describe('Resiliencia SOA y Degradación Elegante (Graceful Degradation)', () =>
 
     // Verificar que la salud del servicio reporta estado degradado
     const healthList = ResilientExecutor.getServicesHealth();
-    const serviceHealth = healthList.find(s => s.name === 'ExternalAnalyticsService');
+    const serviceHealth = healthList.find((s) => s.name === 'ExternalAnalyticsService');
     expect(serviceHealth).toBeDefined();
     expect(serviceHealth?.status).toBe('DEGRADED');
   });
@@ -37,18 +37,23 @@ describe('Resiliencia SOA y Degradación Elegante (Graceful Degradation)', () =>
     for (let i = 0; i < 3; i++) {
       await ResilientExecutor.executeWithFallback(
         serviceName,
-        async () => { throw new Error(`Fallo #${i + 1}`); },
+        async () => {
+          throw new Error(`Fallo #${i + 1}`);
+        },
         () => ({ fallback: true })
       );
     }
 
     const healthList = ResilientExecutor.getServicesHealth();
-    const serviceHealth = healthList.find(s => s.name === serviceName);
+    const serviceHealth = healthList.find((s) => s.name === serviceName);
     expect(serviceHealth?.status).toBe('DOWN');
 
     // La siguiente llamada debe saltarse la acción primaria y usar fallback directo
     let primaryAttempted = false;
-    const directFallback = await ResilientExecutor.executeWithFallback<{ success: boolean; fallbackFromCircuitBreaker?: boolean }>(
+    const directFallback = await ResilientExecutor.executeWithFallback<{
+      success: boolean;
+      fallbackFromCircuitBreaker?: boolean;
+    }>(
       serviceName,
       async () => {
         primaryAttempted = true;

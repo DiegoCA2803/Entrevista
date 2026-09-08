@@ -1,0 +1,4 @@
+# Sustituye el dominio y apunta su registro DNS a la IP pública de tu VPS.
+minefleet.tu-dominio.com {
+    reverse_proxy 127.0.0.1:4000
+}

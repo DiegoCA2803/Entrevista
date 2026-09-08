@@ -1,39 +1,21 @@
-# Multi-stage Dockerfile para Despliegue de Control de Flota Minera
-
-# Stage 1: Build Frontend
-FROM node:22-alpine AS frontend-builder
-WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm install
-COPY frontend/ ./
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+COPY frontend/package*.json ./frontend/
+RUN npm ci && npm ci --prefix frontend
+COPY backend ./backend
+COPY frontend ./frontend
+COPY scripts ./scripts
 RUN npm run build
 
-# Stage 2: Build Backend
-FROM node:22-alpine AS backend-builder
+FROM node:22-alpine AS runtime
 WORKDIR /app
+ENV NODE_ENV=production PORT=4000
 COPY package*.json ./
-COPY backend/tsconfig.json ./backend/
-RUN npm install
-COPY backend/ ./backend/
-RUN npx tsc -p backend/tsconfig.json
-
-# Stage 3: Production Runner
-FROM node:22-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-ENV PORT=4000
-
-# Install production dependencies only
-COPY package*.json ./
-RUN npm install --omit=dev
-
-# Copy compiled backend and schema
-COPY --from=backend-builder /app/backend/dist ./backend/dist
-COPY backend/src/repositories/schema.sql ./backend/dist/repositories/schema.sql
-
-# Copy built frontend assets
-COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
-
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build --chown=node:node /app/backend/dist ./backend/dist
+COPY --from=build --chown=node:node /app/frontend/dist ./frontend/dist
+USER node
 EXPOSE 4000
-
-CMD ["node", "backend/dist/server.js"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD node -e "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node","backend/dist/server.js"]

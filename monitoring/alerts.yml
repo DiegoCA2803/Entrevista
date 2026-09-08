@@ -1,0 +1,18 @@
+groups:
+  - name: minefleet
+    rules:
+      - alert: MineFleetUnavailable
+        expr: up{job="minefleet"} == 0 or minefleet_database_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: 'MineFleet o PostgreSQL no están disponibles' }
+      - alert: MineFleetDeadLetters
+        expr: minefleet_outbox_events{status="DEAD"} > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations: { summary: 'Existen eventos que agotaron los reintentos' }
+      - alert: MineFleetQueueBacklog
+        expr: minefleet_outbox_events{status="PENDING"} > 20
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: 'Se acumulan eventos pendientes de entrega' }

@@ -1,40 +1,99 @@
-version: '3.8'
+name: minefleet
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://mine_user:${POSTGRES_PASSWORD:?Run npm run setup}@postgres:5432/mine_fleet
+  JWT_SECRET: ${JWT_SECRET:?Run npm run setup}
+  ADMIN_EMAIL: ${ADMIN_EMAIL}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  ADMIN_NAME: ${ADMIN_NAME:-Supervisor de operaciones}
+  VIEWER_EMAIL: ${VIEWER_EMAIL:-}
+  VIEWER_PASSWORD: ${VIEWER_PASSWORD:-}
+  SEED_DEMO: ${SEED_DEMO:-false}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  METRICS_TOKEN: ${METRICS_TOKEN:?Run npm run setup}
+  WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Run npm run setup}
+  CRON_SECRET: ${CRON_SECRET:?Run npm run setup}
+  QUEUE_TARGET_URL: http://notifications:4100/events
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: minefleet_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: mine_user
-      POSTGRES_PASSWORD: mine_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: mine_fleet
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./backend/src/repositories/schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports: ['127.0.0.1:55432:5432']
+    volumes: ['postgres_data:/var/lib/postgresql/data']
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mine_user -d mine_fleet"]
+      test: ['CMD-SHELL', 'pg_isready -U mine_user -d mine_fleet']
       interval: 5s
       timeout: 5s
-      retries: 5
-
+      retries: 10
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: minefleet_app
+    build: .
+    image: minefleet:local
     restart: unless-stopped
+    environment: *app-env
+    ports: ['127.0.0.1:4000:4000']
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
+  worker:
+    image: minefleet:local
+    restart: unless-stopped
+    command: ['node', 'backend/dist/worker.js']
+    healthcheck: { disable: true }
+    environment: *app-env
+    depends_on:
+      app: { condition: service_healthy }
+  notifications:
+    image: minefleet:local
+    restart: unless-stopped
+    command: ['node', 'backend/dist/notification-sink.js']
+    environment: *app-env
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 15s
+      timeout: 5s
+    depends_on:
+      app: { condition: service_healthy }
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ['monitoring']
+    restart: unless-stopped
+    ports: ['127.0.0.1:9090:9090']
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    secrets: [metrics_token]
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.retention.time=7d']
+    depends_on:
+      app: { condition: service_healthy }
+  grafana:
+    image: grafana/grafana:12.1.1
+    profiles: ['monitoring']
+    restart: unless-stopped
+    ports: ['127.0.0.1:3001:3000']
     environment:
-      PORT: 4000
-      NODE_ENV: production
-      DATABASE_URL: postgres://mine_user:mine_password@postgres:5432/mine_fleet
-    ports:
-      - "4000:4000"
-
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Run npm run setup}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus]
+secrets:
+  metrics_token:
+    environment: METRICS_TOKEN
 volumes:
   postgres_data:
+  prometheus_data:
+  grafana_data:

@@ -43,14 +43,7 @@ export async function bootstrapContainer(customRepos?: AppRepositories): Promise
     const opService = c.resolve<OperatorService>(TOKENS.OperatorService);
     const eqService = c.resolve<EquipmentService>(TOKENS.EquipmentService);
     const auditService = c.resolve<AuditService>(TOKENS.AuditService);
-    return new ShiftService(
-      r.shiftRepo,
-      r.equipmentRepo,
-      r.operatorRepo,
-      opService,
-      eqService,
-      auditService
-    );
+    return new ShiftService(r.shiftRepo, r.equipmentRepo, r.operatorRepo, opService, eqService, auditService);
   });
 
   // 6. Servicio de Mantenimiento (Reglas 2-3)
@@ -61,7 +54,8 @@ export async function bootstrapContainer(customRepos?: AppRepositories): Promise
       r.maintenanceRepo,
       r.equipmentRepo,
       r.shiftRepo,
-      auditService
+      auditService,
+      c.resolve<OperatorService>(TOKENS.OperatorService)
     );
   });
 

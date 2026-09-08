@@ -1,179 +1,122 @@
-# MineFleet — Sistema de Control de Asignación de Equipos y Mantenimiento Minero
+# MineFleet — Control de operaciones mineras
 
-Aplicación web integral desarrollada para resolver el control de asignaciones operativas en minería (camiones de acarreo, excavadoras, perforadoras), eliminando las fallas humanas de las hojas de cálculo tradicionales: asignaciones de equipos vencidos de mantenimiento, operadores sin acreditación y colisiones de recursos.
+Aplicación para programar equipos y operadores, registrar mantenimiento y anticipar bloqueos por uso. React + TypeScript + Express + PostgreSQL. Incluye autenticación JWT, roles, operaciones idempotentes, auditoría y una cola persistente para integraciones.
 
-Diseñado bajo una **Arquitectura en Capas Orientada a Servicios (SOA) con Degradación Elegante (*Graceful Degradation*)**, persistencia relacional (**PostgreSQL**) y contenedorización con **Docker**.
+## Inicio rápido con Docker
 
----
-
-## Características Principales y Cumplimiento de Reglas
-
-1. **Gestión de Equipos y Horómetros (Reglas 1, 2 y 3)**:
-   - Control de horómetro acumulado por equipo e intervalos de mantenimiento preventivo (PM-250h).
-   - **Bloqueo automático** cuando el horómetro alcanza el umbral de servicio.
-   - Desbloqueo y liberación mediante registro formal de mantenimiento, recalculando el siguiente ciclo a partir del **horómetro real de servicio** para preservar la vida útil de repuestos nuevos.
-2. **Operadores y Certificaciones por Fecha de Turno (Reglas 4 y 9)**:
-   - Validación estricta de certificaciones técnicas según el tipo de equipo y la fecha específica del turno.
-3. **Turnos y Asignaciones (Reglas 5, 6, 7 y 8)**:
-   - Vinculación atómica Operador + Equipo + Turno (Día/Noche).
-   - **Garantía de Concurrencia**: Restricciones relacionales compuestas a nivel de base de datos (`UNIQUE(shift_id, equipment_id)` y `UNIQUE(shift_id, operator_id)`) y transacciones para impedir doble asignación simultánea.
-4. **Cierre de Turnos y Acumulación Real (Regla 10)**:
-   - Registro de horas efectivamente trabajadas (`actual_hours`).
-   - Suma inmediata a los horómetros de los equipos asignados, disparando el bloqueo en vivo si se cruza el umbral y marcando turnos futuros en estado **"EN RIESGO"**.
-5. **Trazabilidad Exhaustiva y Validación Multi-Error (Regla 11)**:
-   - Si una asignación es rechazada por varias razones simultáneas (ej. equipo bloqueado + operador con certificación vencida), el sistema **retorna y visualiza TODAS las causas**.
-6. **Proyección Analítica de Mantenimiento a 7 Días (Regla 12)**:
-   - Simulación prospectiva del uso de la flota sumando las horas de los turnos programados para los próximos 7 días, detectando el día y la jornada exacta del cruce de umbral.
-7. **Excepción con Autorización de Supervisor**:
-   - Mecanismo de override auditado con código de supervisor y justificación obligatoria ($\ge 10$ caracteres).
-8. **Inyección de Dependencias (IoC Container) y Clean Code**:
-   - Contenedor de inversión de control tipado (`DIContainer`) y Composition Root para resolución desacoplada siguiendo principios SOLID.
-   - Jerarquía de errores de dominio tipados (`NotFoundError`, `ValidationError`, `ConflictError`, `BusinessRuleViolationError`).
-   - Middleware centralizado de gestión de errores y eliminación de código repetitivo.
-9. **Degradación Elegante (SOA Resilience)**:
-   - Circuit Breaker y fallback en servicios auxiliares (proyecciones complejas y analítica) para garantizar que las operaciones críticas del núcleo minero nunca se detengan ante fallos periféricos.
-
----
-
-## Arquitectura del Sistema
-
-```
-                            [ Frontend SPA - React + Vite + Tailwind ]
-                                                │
-                                                ▼  REST API (HTTP / JSON)
-  ┌─────────────────────────────────────────────────────────────────────────────┐
-  │                           CAPA DE PRESENTACIÓN / API                         │
-  │                   Express 5 Controllers & Routes (/api/*)                   │
-  └─────────────────────────────────────────────────────────────────────────────┘
-                                                │
-                                                ▼
-  ┌─────────────────────────────────────────────────────────────────────────────┐
-  │                             CAPA DE SERVICIOS (SOA)                          │
-  │  ┌───────────────────────┐  ┌───────────────────────┐  ┌─────────────────┐  │
-  │  │   EquipmentService    │  │    OperatorService    │  │ MaintenanceSvc  │  │
-  │  └───────────────────────┘  └───────────────────────┘  └─────────────────┘  │
-  │  ┌───────────────────────┐  ┌───────────────────────┐  ┌─────────────────┐  │
-  │  │ ShiftAssignmentService│  │   ProjectionService   │  │  AuditService   │  │
-  │  │  (Reglas 5-11 + Lock) │  │  (Graceful Fallback)  │  │ (Async Resilient│  │
-  │  └───────────────────────┘  └───────────────────────┘  └─────────────────┘  │
-  └─────────────────────────────────────────────────────────────────────────────┘
-                                                │
-                                                ▼
-  ┌─────────────────────────────────────────────────────────────────────────────┐
-  │                           CAPA DE REPOSITORIOS (DAL)                        │
-  │   IEquipmentRepo │ IOperatorRepo │ IShiftRepo │ IMaintenanceRepo            │
-  └─────────────────────────────────────────────────────────────────────────────┘
-                         │                                    │
-                         ▼                                    ▼
-       [ PostgreSQL (Producción / Docker) ]     [ Relational Memory Engine (Test/Dev) ]
-```
-
----
-
-## Cómo Levantarlo en Local
-
-### Requisitos Previos
-- **Node.js**: v20 o superior (recomendado v22)
-- **npm**: v10 o superior
-- **Docker** y **Docker Compose** (opcional, para ejecución con PostgreSQL)
-
----
-
-### Opción A: Con Docker Compose (Entorno de Producción Completo)
-
-Levanta la base de datos relacional PostgreSQL 16 y el contenedor de la aplicación:
+Requisitos: Node.js 22 y Docker Desktop con contenedores Linux. Desde la raíz del proyecto:
 
 ```bash
-docker-compose up --build
+npm ci
+npm run setup
+docker compose --profile monitoring up -d --build
 ```
 
-- La aplicación estará disponible de inmediato en: **`http://localhost:4000`**
-- PostgreSQL estará activo en: `localhost:5432` con usuario `mine_user` y base `mine_fleet`.
+`setup` crea `.env` con secretos aleatorios sin sobrescribir una configuración existente. Compose levanta PostgreSQL, aplicación, worker, receptor de eventos, Prometheus y Grafana. Los volúmenes conservan los datos al reiniciar.
 
----
+| Acceso local           | Dirección             | Credenciales de demostración                           |
+| ---------------------- | --------------------- | ------------------------------------------------------ |
+| Aplicación, supervisor | http://localhost:4000 | `supervisor@minefleet.local` / `MineFleet.Demo2026!`   |
+| Aplicación, consulta   | http://localhost:4000 | `consulta@minefleet.local` / `MineFleet.Consulta2026!` |
+| Grafana                | http://localhost:3001 | `admin` / `MineFleet.Grafana2026!`                     |
+| Prometheus             | http://localhost:9090 | Solo expuesto en localhost                             |
 
-### Opción B: Ejecución Rápida con npm (Zero-Config / Fallback Relacional)
+En Grafana abre **Dashboards → MineFleet → MineFleet · Operación y servicios**. El dashboard y el origen de datos se cargan automáticamente. Sin métricas, puedes usar `docker compose up -d --build`.
 
-Si no tienes Docker activo en este momento, puedes ejecutarlo directamente en tu máquina local. El sistema inicializará automáticamente el motor relacional en memoria con los datos de prueba precargados:
+Estas contraseñas son exclusivamente de demostración. Para publicar, configura credenciales propias y `COOKIE_SECURE=true`; revisa [DESPLIEGUE.md](DESPLIEGUE.md).
 
-1. **Instalar dependencias y compilar:**
-   ```bash
-   npm install
-   npm run --prefix frontend install
-   npm run build
-   ```
+## Qué incluye
 
-2. **Iniciar la aplicación:**
-   ```bash
-   npm start
-   ```
+- Panel con disponibilidad, carga semanal, próximos turnos y prioridades de mantenimiento; diseño adaptable y tema claro/oscuro.
+- **Programar turno:** fecha, jornada, duración, observaciones y varias parejas equipo + operador en un solo formulario. El servidor guarda todo o revierte todo.
+- Certificación válida durante la jornada completa, incluidos turnos nocturnos; control de solapamientos y duplicados.
+- Cierre con horas reales, bloqueo por umbral, asignaciones futuras en riesgo y liberación mediante mantenimiento.
+- Cancelación auditada de asignaciones pendientes para reemplazar recursos.
+- Proyección de siete fechas, desde hoy hasta hoy + 6, usando horas de turnos programados.
+- JWT en cookie `HttpOnly`, sesión revocable, contraseñas con scrypt, límites de intentos y roles supervisor/consulta.
+- `Idempotency-Key` persistida con el resultado de cada escritura. Los reintentos no duplican cierres ni horómetros.
+- Auditoría transaccional, IDs de correlación, logs JSON y cola outbox con reintentos, recuperación tras reinicios y revisión manual de eventos agotados.
+- Docker con usuario sin privilegios, healthchecks, volúmenes; Prometheus y dashboard de Grafana.
 
-3. **Abrir en tu navegador:**
-   - **`http://localhost:4000`**
-
----
-
-### Opción C: Modo Desarrollo (Hot Reload)
+## Desarrollo local
 
 ```bash
-# Terminal 1: Backend en modo watch
-npm run dev:backend
-
-# Terminal 2: Frontend Vite
-npm run dev:frontend
+npm ci
+npm ci --prefix frontend
+npm run setup
+docker compose up -d postgres
+npm run dev
 ```
-- Frontend: `http://localhost:3000` (con proxy automático al backend en `http://localhost:4000`)
 
----
+Frontend en http://localhost:3000, API en http://localhost:4000. Para probar las integraciones con procesos locales, usa otras dos terminales:
 
-##  Pruebas Automatizadas
+```bash
+npm run notifications
+npm run worker
+```
 
-El proyecto incluye una suite de pruebas automatizadas con **Vitest** que valida exhaustivamente las 12 reglas de negocio, concurrencia y degradación elegante:
+Para servir la compilación completa:
+
+```bash
+npm run build
+npm start
+```
+
+PostgreSQL es obligatorio. **Si falla, la aplicación no cambia a memoria ni inventa confirmaciones.** Existe `DEMO_MEMORY=true` únicamente como vista previa temporal fuera de producción; no cumple el requisito de persistencia relacional y no tiene cola durable.
+
+## Verificación
 
 ```bash
 npm test
+npm run test:integration
+npm run build
 ```
 
-### Casos de Prueba Incluidos:
-- `Regla 1 y 2`: Bloqueo automático al alcanzar el intervalo de horómetro.
-- `Regla 3`: Desbloqueo y recálculo de ciclo a partir del horómetro real.
-- `Reglas 4 y 9`: Rechazo de operadores con certificación vencida en la fecha del turno.
-- `Reglas 6 y 7`: Prevención de duplicidad de operadores y equipos en el mismo turno (concurrencia).
-- `Regla 10`: Cierre de turno, suma de horas y disparo de bloqueo en vivo.
-- `Regla 11`: Retorno simultáneo de **TODAS** las violaciones de reglas en una asignación rechazada.
-- `Regla 12`: Proyección a 7 días de equipos que cruzarán su umbral según turnos programados.
-- `Supervisor Override`: Auditoría y justificación obligatoria para forzar asignaciones.
-- `Graceful Degradation`: Aislamiento de fallos y activación de fallback mediante Circuit Breaker.
+- Pruebas unitarias de reglas, proyección e inyección de dependencias.
+- Pruebas con **PostgreSQL real y dos instancias de API**: autenticación y roles, CSRF, idempotencia, cierres simultáneos, doble asignación, reversión por fallo, creación integral, turno nocturno, mantenimiento y cancelación.
+- Pruebas de cola con receptor HTTP que falla y se recupera, reclamo entre workers, leases vencidos y eventos agotados.
 
----
+`test:integration` requiere el PostgreSQL local y un usuario con permiso de crear bases. Crea una base aislada `minefleet_test_<aleatorio>` y la elimina al finalizar; nunca ejecuta los tests contra `mine_fleet`. `npm test` omite esa suite cuando no existe `TEST_DATABASE_URL`.
 
-## Datos de Prueba Precargados (Casos Borde)
+Verificación realizada el 8 de septiembre de 2026: **14 pruebas unitarias y 15 de integración aprobadas**, compilación de producción e imagen Docker generadas. Se comprobó en navegador la creación de un turno con dos asignaciones, el diseño móvil y el tema oscuro. Al detener el receptor, tres eventos permanecieron pendientes; al reiniciarlo se entregaron automáticamente, con tres registros únicos en el consumidor. Prometheus obtuvo el estado `UP` y Grafana cargó sus diez paneles. Las dependencias de producción no presentaron vulnerabilidades conocidas en `npm audit` en esa revisión.
 
-Al iniciar por primera vez o al hacer clic en el botón superior **"Reset Datos Demo"**, la aplicación precarga los casos límite requeridos:
+## Casos de prueba iniciales
 
-| Entidad / Caso | Código | Detalle del Caso Borde |
-|---|---|---|
-| **Equipo a punto de PM** | `CAM-001` | Horómetro en **246.0h** de un ciclo de 250h. Le restan solo **4h** de vida útil. |
-| **Operador Cert. Vencida** | `OP-003` | Jorge Quispe: certificación para Excavadora y Camión **vencida hace 5 días**. |
-| **Turno Crítico para Cierre** | `TUR-[HOY]-D` | Asignado con `CAM-001`. Al cerrarlo con 8h, elevará su horómetro a **254h** y disparará el bloqueo automático en vivo. |
-| **Equipo Bloqueado** | `EXC-101` | Excavadora en 512h (bloqueada). Permite probar el registro de mantenimiento o la excepción de supervisor. |
-| **Equipo en Taller** | `CRG-301` | Cargador frontal bajo estado `EN_MANTENIMIENTO`. |
-| **Turnos Futuros (+1, +2, +3)** | `TUR-...` | Turnos programados que alimentan la **Proyección a 7 Días** (Regla 12). Uno de ellos tiene asignado a `CAM-001` para demostrar cómo pasa a **"EN RIESGO"** cuando se bloquea en el turno anterior. |
+Se cargan solo cuando `SEED_DEMO=true` y la flota está vacía. Las fechas se calculan al inicializar.
 
----
+| Caso                    | Identificador                    | Cómo probarlo                                                        |
+| ----------------------- | -------------------------------- | -------------------------------------------------------------------- |
+| Cerca del mantenimiento | CAM-001, 246 h de 250 h          | Cerrar el turno de día de hoy con 8 h lo lleva a 254 h y lo bloquea. |
+| Certificación vencida   | OP-003, Jorge Quispe             | El servidor rechaza asignaciones y explica el vencimiento.           |
+| Equipo bloqueado        | EXC-101, 512 h                   | Registrar mantenimiento lo libera y conserva el historial.           |
+| En taller               | CRG-301                          | No puede asignarse hasta registrar mantenimiento.                    |
+| Riesgo futuro           | CAM-001 en una jornada posterior | Después del cierre crítico, su asignación queda en riesgo.           |
 
-## Guía de Despliegue en la Nube
+Para reemplazar expresamente la planificación demo, el script exige `SEED_CONFIRM=RESET` y `npm run seed`. Este comando borra los datos de flota, operadores y turnos; conserva usuarios, auditoría y eventos. No hay un botón público de reinicio.
 
-La aplicación está diseñada para ser desplegada en cualquier plataforma en la nube (Render, Railway, Fly.io, Vercel o VPS propia):
+## API y trazabilidad
 
-### Despliegue en Render / Railway:
-1. Conectar el repositorio de GitHub.
-2. Crear un servicio de base de datos **PostgreSQL**.
-3. Crear un **Web Service**:
-   - **Build Command**: `npm install && npm run --prefix frontend install && npm run build`
-   - **Start Command**: `npm start`
-   - **Environment Variables**:
-     - `DATABASE_URL`: URL de conexión de la base de datos PostgreSQL.
-     - `NODE_ENV`: `production`
-     - `PORT`: `4000` (o la variable `$PORT` asignada por el proveedor).
-4. El backend compilará el frontend estático y lo servirá conjuntamente en el mismo puerto, requiriendo un único servicio web activo.
+`GET /api/health` es público. Las demás rutas de negocio requieren sesión y las escrituras requieren supervisor. Envía `X-Requested-With: MineFleet` en peticiones POST y una `Idempotency-Key` única por operación. Reutiliza exactamente esa clave para reintentar la misma operación.
+
+| Ruta                                                                | Uso                                                           |
+| ------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` | Ingreso, sesión actual y revocación                           |
+| `GET /api/equipment`, `GET /api/operators`, `GET /api/shifts`       | Consultas                                                     |
+| `POST /api/shifts`                                                  | Turno y array `assignments` obligatorio                       |
+| `POST /api/shifts/:id/assignments`                                  | Agregar un recurso a un turno existente                       |
+| `POST /api/shifts/:id/assignments/:assignmentId/cancel`             | Liberar una asignación con motivo                             |
+| `POST /api/shifts/:id/close`                                        | Horas reales del cierre                                       |
+| `POST /api/maintenance`                                             | Mantenimiento y liberación                                    |
+| `GET /api/projection`                                               | Proyección; acepta `reference_date=YYYY-MM-DD`                |
+| `GET /api/audit-logs`, `GET /api/operations`                        | Bitácora y cola                                               |
+| `POST /api/operations/retry/:id`                                    | Reintento autorizado de un evento agotado                     |
+| `GET /metrics`                                                      | Métricas; requiere `Authorization: Bearer <METRICS_TOKEN>`    |
+| `GET /api/cron/outbox`                                              | Lote limitado; requiere `Authorization: Bearer <CRON_SECRET>` |
+
+Los rechazos de negocio responden `422` con todas las `violations`. Duplicados y claves reutilizadas con otro contenido responden `409`; sesión inválida `401`; rol insuficiente `403`. `X-Request-Id` permite correlacionar respuesta, logs y auditoría.
+
+## Publicación y repositorio
+
+La guía [DESPLIEGUE.md](DESPLIEGUE.md) explica **Vercel Hobby + Neon**, sin conectar GitHub, y el despliegue completo con Docker en una VPS. [DECISIONES.md](DECISIONES.md) documenta arquitectura, reglas, garantías y límites.
+
+Se quitó el remoto `origin` de esta copia a petición del propietario, conservando el historial Git. El repositorio que ya exista en GitHub no se elimina. No se ha creado un despliegue público durante esta modificación: el enlace publicado debe añadirse aquí después de desplegar con tu cuenta. La consigna de evaluación también pide acceso al código; desconectar esta copia no reemplaza ese entregable.

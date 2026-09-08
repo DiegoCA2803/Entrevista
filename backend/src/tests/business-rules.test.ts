@@ -127,8 +127,8 @@ describe('Reglas de Negocio - Control de Flota Minera', () => {
     const validation = await shiftService.validateAssignment(shift.id, eq.id, op.id);
 
     expect(validation.valid).toBe(false);
-    expect(validation.errors.some(e => e.includes('REGLA 9'))).toBe(true);
-    expect(validation.errors.some(e => e.includes('venció el 2026-08-01'))).toBe(true);
+    expect(validation.errors.some((e) => e.includes('REGLA 9'))).toBe(true);
+    expect(validation.errors.some((e) => e.includes('venció el 2026-08-01'))).toBe(true);
   });
 
   // ----------------------------------------------------
@@ -191,12 +191,12 @@ describe('Reglas de Negocio - Control de Flota Minera', () => {
     // Intentar asignar eq1 de nuevo (con op2) en el mismo turno -> Rechazado por Regla 7
     const valEq = await shiftService.validateAssignment(shift.id, eq1.id, op2.id);
     expect(valEq.valid).toBe(false);
-    expect(valEq.errors.some(e => e.includes('REGLA 7'))).toBe(true);
+    expect(valEq.errors.some((e) => e.includes('REGLA 7'))).toBe(true);
 
     // Intentar asignar op1 de nuevo (con eq2) en el mismo turno -> Rechazado por Regla 6
     const valOp = await shiftService.validateAssignment(shift.id, eq2.id, op1.id);
     expect(valOp.valid).toBe(false);
-    expect(valOp.errors.some(e => e.includes('REGLA 6'))).toBe(true);
+    expect(valOp.errors.some((e) => e.includes('REGLA 6'))).toBe(true);
   });
 
   // ----------------------------------------------------
@@ -240,8 +240,8 @@ describe('Reglas de Negocio - Control de Flota Minera', () => {
     // Debe contener AL MENOS 2 errores simultáneos (Regla 8 y Regla 9)
     expect(validation.errors.length).toBeGreaterThanOrEqual(2);
 
-    const hasBlockedError = validation.errors.some(e => e.includes('REGLA 8') || e.includes('BLOQUEADO'));
-    const hasCertError = validation.errors.some(e => e.includes('REGLA 9') || e.includes('venció'));
+    const hasBlockedError = validation.errors.some((e) => e.includes('REGLA 8') || e.includes('BLOQUEADO'));
+    const hasCertError = validation.errors.some((e) => e.includes('REGLA 9') || e.includes('venció'));
 
     expect(hasBlockedError).toBe(true);
     expect(hasCertError).toBe(true);
@@ -369,7 +369,7 @@ describe('Reglas de Negocio - Control de Flota Minera', () => {
     // Ejecutar proyección con fecha base 2026-09-01
     const { projection } = await projectionService.get7DayMaintenanceProjection('2026-09-01');
 
-    const item = projection.find(p => p.equipment_code === 'EXC-PROY');
+    const item = projection.find((p) => p.equipment_code === 'EXC-PROY');
     expect(item).toBeDefined();
     expect(item?.projected_scheduled_hours_7days).toBe(22);
     expect(item?.projected_total_horometer).toBe(252);
@@ -381,7 +381,7 @@ describe('Reglas de Negocio - Control de Flota Minera', () => {
   // ----------------------------------------------------
   // DECISIÓN: Excepción con Autorización de Supervisor
   // ----------------------------------------------------
-  it('Supervisor Override: Permite forzar asignación bloqueada solo con justificación y auditoría', async () => {
+  it('Supervisor: no puede saltarse el bloqueo de mantenimiento', async () => {
     const eqBlocked = await equipmentService.createEquipment({
       code: 'CAM-OVERRIDE',
       name: 'Camión Bloqueado',
@@ -420,23 +420,20 @@ describe('Reglas de Negocio - Control de Flota Minera', () => {
     ).rejects.toThrow();
 
     // Con override válido y justificación de supervisor
-    const forcedAssignment = await shiftService.createAssignment({
-      shift_id: shift.id,
-      equipment_id: eqBlocked.id,
-      operator_id: op.id,
-      is_override: true,
-      override_by: 'SUPERVISOR_GUARDIA_01',
-      override_reason: 'Emergencia en rampa de acarreo por desprendimiento. Autorizado por Jefatura.'
-    });
-
-    expect(forcedAssignment.is_override).toBe(true);
-    expect(forcedAssignment.override_by).toBe('SUPERVISOR_GUARDIA_01');
-    expect(forcedAssignment.override_reason).toContain('Emergencia');
+    await expect(
+      shiftService.createAssignment({
+        shift_id: shift.id,
+        equipment_id: eqBlocked.id,
+        operator_id: op.id,
+        is_override: true,
+        override_by: 'SUPERVISOR_GUARDIA_01',
+        override_reason: 'Emergencia en rampa de acarreo por desprendimiento. Autorizado por Jefatura.'
+      })
+    ).rejects.toThrow('Las reglas de seguridad no admiten excepciones');
 
     // Verificar que quedó registrado en logs de auditoría
     const logs = await auditService.getAllLogs();
-    const overrideLog = logs.find(l => l.action === 'SUPERVISOR_OVERRIDE_ASSIGNMENT');
-    expect(overrideLog).toBeDefined();
-    expect(overrideLog?.performed_by).toBe('SUPERVISOR_GUARDIA_01');
+    const overrideLog = logs.find((l) => l.action === 'SUPERVISOR_OVERRIDE_ASSIGNMENT');
+    expect(overrideLog).toBeUndefined();
   });
 });

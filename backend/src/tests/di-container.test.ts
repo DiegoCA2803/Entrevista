@@ -21,10 +21,14 @@ describe('Inyección de Dependencias (IoC Container & SOLID)', () => {
     const container = new DIContainer();
     let factoryInvocations = 0;
 
-    container.registerFactory('ServiceFactory', () => {
-      factoryInvocations++;
-      return { id: Math.random() };
-    }, true);
+    container.registerFactory(
+      'ServiceFactory',
+      () => {
+        factoryInvocations++;
+        return { id: Math.random() };
+      },
+      true
+    );
 
     expect(factoryInvocations).toBe(0);
 

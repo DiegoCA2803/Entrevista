@@ -42,7 +42,7 @@ export class MemoryEquipmentRepository implements IEquipmentRepository {
   constructor(private state: MemoryDatabaseState) {}
 
   async findAll(): Promise<Equipment[]> {
-    return Array.from(this.state.equipmentMap.values()).map(e => ({ ...e }));
+    return Array.from(this.state.equipmentMap.values()).map((e) => ({ ...e }));
   }
 
   async findById(id: string): Promise<Equipment | null> {
@@ -77,7 +77,11 @@ export class MemoryEquipmentRepository implements IEquipmentRepository {
     return { ...record };
   }
 
-  async updateHorometerAndStatus(id: string, newHorometer: number, status: EquipmentStatus): Promise<Equipment> {
+  async updateHorometerAndStatus(
+    id: string,
+    newHorometer: number,
+    status: EquipmentStatus
+  ): Promise<Equipment> {
     const eq = this.state.equipmentMap.get(id);
     if (!eq) throw new Error(`Equipo con ID ${id} no encontrado.`);
     eq.horometer = newHorometer;
@@ -96,10 +100,15 @@ export class MemoryEquipmentRepository implements IEquipmentRepository {
     return { ...eq };
   }
 
-  async resetMaintenanceCycle(id: string, horometerAtPm: number, status: EquipmentStatus): Promise<Equipment> {
+  async resetMaintenanceCycle(
+    id: string,
+    horometerAtPm: number,
+    status: EquipmentStatus
+  ): Promise<Equipment> {
     const eq = this.state.equipmentMap.get(id);
     if (!eq) throw new Error(`Equipo con ID ${id} no encontrado.`);
     eq.last_maintenance_horometer = horometerAtPm;
+    eq.horometer = horometerAtPm;
     eq.status = status;
     eq.updated_at = new Date().toISOString();
     this.state.equipmentMap.set(id, eq);
@@ -281,7 +290,7 @@ export class MemoryShiftRepository implements IShiftRepository {
 
   async findAssignmentByShiftAndEquipment(shiftId: string, equipmentId: string): Promise<Assignment | null> {
     for (const a of this.state.assignmentMap.values()) {
-      if (a.shift_id === shiftId && a.equipment_id === equipmentId) {
+      if (a.shift_id === shiftId && a.equipment_id === equipmentId && a.status !== 'CANCELADA') {
         return { ...a };
       }
     }
@@ -290,7 +299,7 @@ export class MemoryShiftRepository implements IShiftRepository {
 
   async findAssignmentByShiftAndOperator(shiftId: string, operatorId: string): Promise<Assignment | null> {
     for (const a of this.state.assignmentMap.values()) {
-      if (a.shift_id === shiftId && a.operator_id === operatorId) {
+      if (a.shift_id === shiftId && a.operator_id === operatorId && a.status !== 'CANCELADA') {
         return { ...a };
       }
     }
@@ -300,7 +309,7 @@ export class MemoryShiftRepository implements IShiftRepository {
   async findUpcomingAssignmentsForEquipment(equipmentId: string, fromDate: string): Promise<Assignment[]> {
     const results: Assignment[] = [];
     for (const a of this.state.assignmentMap.values()) {
-      if (a.equipment_id === equipmentId) {
+      if (a.equipment_id === equipmentId && a.status !== 'CANCELADA' && a.status !== 'COMPLETADA') {
         const shift = this.state.shiftMap.get(a.shift_id);
         if (shift && shift.date >= fromDate && shift.status !== 'CANCELADO' && shift.status !== 'CERRADO') {
           results.push({ ...a, shift: { ...shift } });
@@ -323,12 +332,16 @@ export class MemoryShiftRepository implements IShiftRepository {
 
     const existingEq = await this.findAssignmentByShiftAndEquipment(data.shift_id, data.equipment_id);
     if (existingEq) {
-      throw new Error(`Violación de unicidad (uq_shift_equipment): El equipo ya está asignado en este turno.`);
+      throw new Error(
+        `Violación de unicidad (uq_shift_equipment): El equipo ya está asignado en este turno.`
+      );
     }
 
     const existingOp = await this.findAssignmentByShiftAndOperator(data.shift_id, data.operator_id);
     if (existingOp) {
-      throw new Error(`Violación de unicidad (uq_shift_operator): El operador ya tiene una asignación en este turno.`);
+      throw new Error(
+        `Violación de unicidad (uq_shift_operator): El operador ya tiene una asignación en este turno.`
+      );
     }
 
     const id = crypto.randomUUID();
@@ -371,7 +384,7 @@ export class MemoryMaintenanceRepository implements IMaintenanceRepository {
 
   async findByEquipmentId(equipmentId: string): Promise<MaintenanceRecord[]> {
     return this.state.maintenanceList
-      .filter(m => m.equipment_id === equipmentId)
+      .filter((m) => m.equipment_id === equipmentId)
       .sort((a, b) => b.date.localeCompare(a.date));
   }
 

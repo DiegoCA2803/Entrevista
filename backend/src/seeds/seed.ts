@@ -1,5 +1,6 @@
 import { AppRepositories, getRepositories } from '../repositories/db.js';
 import { EquipmentType } from '../domain/types.js';
+import { localDate } from '../domain/time.js';
 
 export async function seedDatabase(repos: AppRepositories): Promise<{ message: string; summary: any }> {
   // Clear existing if supported
@@ -8,12 +9,12 @@ export async function seedDatabase(repos: AppRepositories): Promise<{ message: s
   } else if (repos.isPostgres && repos.getPool) {
     const pool = repos.getPool();
     await pool.query(`
-      TRUNCATE TABLE audit_logs, maintenance_records, assignments, shifts, certifications, operators, equipment RESTART IDENTITY CASCADE;
+      TRUNCATE TABLE maintenance_records, assignments, shifts, certifications, operators, equipment RESTART IDENTITY CASCADE;
     `);
   }
 
-  const today = new Date().toISOString().split('T')[0];
-  
+  const today = localDate();
+
   // Fechas relativas
   const pastDate = new Date();
   pastDate.setDate(pastDate.getDate() - 30);
@@ -186,7 +187,8 @@ export async function seedDatabase(repos: AppRepositories): Promise<{ message: s
     period: 'DIA',
     planned_duration_hours: 8.0,
     status: 'PROGRAMADO',
-    notes: 'Turno Día Frente de Carguío Principal. Al cerrar este turno, CAM-001 superará las 250h y se bloqueará automáticamente.'
+    notes:
+      'Turno Día Frente de Carguío Principal. Al cerrar este turno, CAM-001 superará las 250h y se bloqueará automáticamente.'
   });
 
   // Asignar CAM-001 con Carlos Mendoza (certificación vigente)
@@ -288,10 +290,14 @@ if (process.argv[1]?.includes('seed.ts')) {
   (async () => {
     console.log('[Seed] Iniciando script de precarga de datos...');
     const repos = await getRepositories();
-    const result = await seedDatabase(repos);
+    if (process.env.SEED_CONFIRM !== 'RESET')
+      throw new Error(
+        'Este comando reemplaza datos de negocio. Define SEED_CONFIRM=RESET para ejecutarlo conscientemente.'
+      );
+    const result = await repos.transaction(() => seedDatabase(repos));
     console.log('[Seed] Resumen:', JSON.stringify(result, null, 2));
     process.exit(0);
-  })().catch(err => {
+  })().catch((err) => {
     console.error('[Seed] Error en script de datos de prueba:', err);
     process.exit(1);
   });

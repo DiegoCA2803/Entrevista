@@ -10,6 +10,11 @@ frontend/dist/
 # Environment files
 .env
 .env.local
+.env.*
+!.env.example
+.vercel/
+artifacts/
+test-results/
 
 # Logs and system artifacts
 *.log

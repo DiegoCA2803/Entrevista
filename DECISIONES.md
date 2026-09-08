@@ -1,183 +1,109 @@
-# Documento de Decisiones de Arquitectura y Negocio — MineFleet
+# Decisiones de MineFleet
 
-**Proyecto:** Sistema de Control de Asignación de Equipos y Mantenimiento Minero  
-**Autor:** Diego  
-**Fecha:** Septiembre 2026  
+## Alcance y arquitectura
 
----
+Se conserva React + TypeScript + Express y PostgreSQL. El núcleo es un **monolito modular** con repositorios y servicios de dominio; no son microservicios de equipos/operadores desplegados por separado. Las reglas cruzan esas entidades y necesitan una confirmación atómica. Separarlas en procesos aumentaría los fallos parciales sin un beneficio demostrado para esta escala.
 
-## 1. Modelo de Datos y Sustento Relacional
+La integración externa sí está separada: una outbox transaccional, un worker independiente y un receptor de ejemplo. Docker Compose puede interrumpir ese receptor sin perder operaciones de negocio.
 
-### 1.1. Elección de Motor Relacional (PostgreSQL)
-Para una operación minera de extracción y acarreo de mineral, la integridad referencial y la consistencia transaccional (ACID) no son negociables. Una asignación incorrecta puede desencadenar riesgos fatales de seguridad, paralización de líneas de carguío y sanciones regulatorias.
+## Modelo relacional
 
-Se seleccionó **PostgreSQL** por:
-1. **Consistencia Transaccional Estricta**: Permite transacciones con niveles de aislamiento que resuelven la concurrencia atómica.
-2. **Restricciones de Integridad Compuestas**: Índices únicos compuestos como `UNIQUE(shift_id, equipment_id)` y `UNIQUE(shift_id, operator_id)` que delegan la garantía física de no duplicidad al motor relacional, eliminando condiciones de carrera (*race conditions*).
-3. **Tipado y Precisión Numérica**: Uso de `NUMERIC(10,2)` para evitar errores de coma flotante en la acumulación de horómetros.
+- `equipment_types`: catálogo de tipo e intervalo. El dataset usa 250 h para los cinco tipos, sin implicar que sea el intervalo real del fabricante.
+- `equipment`: código único, tipo, horómetro y base del último mantenimiento. Una FK compuesta garantiza que el intervalo coincide con el catálogo de su tipo. Cambiar el catálogo requiere una migración controlada; no se permite alterar el ciclo de un único equipo desde la pantalla.
+- `operators` y `certifications`: un operador puede tener varias acreditaciones por tipo y vigencia. Se preservan las anteriores al registrar una renovación.
+- `shifts`: fecha, jornada y duración. `UNIQUE(date, period)` evita crear dos identidades para la misma jornada. Día empieza 06:00 y noche 18:00, hora de Perú (UTC−5).
+- `assignments`: relación turno/equipo/operador. Índices únicos parciales impiden duplicar un equipo u operador en el turno salvo registros cancelados. Cancelar conserva el historial y libera el recurso para una nueva asignación.
+- `maintenance_records`: fecha, horómetro real, tipo, observaciones y responsable autenticado.
+- `app_users` y `auth_sessions`: identidad con hash de contraseña, rol y sesiones JWT revocables.
+- `idempotency_keys`: actor, clave, huella de la petición y respuesta confirmada.
+- `audit_logs` y `outbox_events`: evidencia local y entrega externa pendiente. `notification_inbox` demuestra la deduplicación del consumidor.
 
-### 1.2. Entidades Principales y Relaciones
-- **`equipment`**:
-  - `id`: UUID (Clave primaria inmutable).
-  - `code`: Identificador visible único (ej. `CAM-001`, `EXC-101`).
-  - `type`: Enum de tipología de equipo (`CAMION_ACARREO`, `EXCAVADORA`, `PERFORADORA`, etc.).
-  - `horometer`: Horas acumuladas de uso del equipo.
-  - `maintenance_interval_hours`: Frecuencia del ciclo preventivo (por defecto 250h).
-  - `last_maintenance_horometer`: Horómetro en el que se realizó el último mantenimiento (base del ciclo actual).
-  - `status`: Estado operativo (`DISPONIBLE`, `BLOQUEADO`, `EN_MANTENIMIENTO`).
-- **`operators`**:
-  - `id`, `code`, `name`, `document_id` (DNI/Rut), `is_active`.
-- **`certifications`**:
-  - Clave foránea `operator_id` vinculada a `operators(id)`.
-  - `equipment_type`: Tipo de equipo autorizado.
-  - `issued_date` y `expiration_date`: Rango de vigencia de la acreditación técnica.
-- **`shifts`**:
-  - `id`, `code` (`TUR-YYYY-MM-DD-JORNADA`), `date`, `period` (`DIA` / `NOCHE`), `planned_duration_hours`, `actual_duration_hours`, `status` (`PROGRAMADO`, `EN_CURSO`, `CERRADO`, `CANCELADO`), `closed_at`, `closed_by`, `notes`.
-- **`assignments`**:
-  - Claves foráneas: `shift_id`, `equipment_id`, `operator_id`.
-  - Restricciones únicas compuestas:
-    - `CONSTRAINT uq_shift_equipment UNIQUE (shift_id, equipment_id)` (Regla 7).
-    - `CONSTRAINT uq_shift_operator UNIQUE (shift_id, operator_id)` (Regla 6).
-  - `status`: `PROGRAMADA`, `EN_RIESGO`, `COMPLETADA`, `CANCELADA`.
-  - `is_override`, `override_by`, `override_reason`, `override_at`: Trazabilidad de excepciones de supervisor.
-- **`maintenance_records`**:
-  - Historial auditable: `equipment_id`, `date`, `horometer_at_maintenance`, `performed_by`, `notes`, `maintenance_type`.
-- **`audit_logs`**:
-  - Bitácora de eventos críticos (cierres de turno, overrides, cambios de estado).
+PostgreSQL usa NUMERIC y restricciones de integridad. La aritmética de aplicación redondea los horómetros a dos decimales. La memoria solo sirve para tests unitarios o una vista previa explícita; no es persistencia relacional ni fallback de producción.
 
----
+## Decisiones de negocio abiertas
 
-## 2. Resolución de las Decisiones Abiertas del Negocio
+### 1. Equipo bloqueado con turnos futuros
 
-### Decisión 1: Un equipo se bloquea a mitad de semana y ya tenía turnos programados para los días siguientes. ¿Qué pasa con esas asignaciones?
-* **Criterio adoptado:** **No se cancelan silenciosamente; pasan al estado `"EN_RIESGO"` (*Flagged Risk*) y alertan al despachador.**
-* **Sustento técnico y operativo:**
-  - Cancelar automáticamente las asignaciones destruiría la planificación operativa de la mina y dejaría al operador asignado "en el aire" sin previo aviso ni reubicación.
-  - Al cerrar un turno que dispara el bloqueo de un equipo, el sistema busca automáticamente todas las asignaciones futuras de ese equipo (`date >= shift_date`) y las actualiza a `status = 'EN_RIESGO'` con el motivo descriptivo: `"Equipo bloqueado por superar umbral en turno X (254h). Requiere mantenimiento previo o reasignación."`
-  - En la interfaz, estas asignaciones se tiñen de ámbar con badges parpadeantes. El despachador tiene dos opciones:
-    1. Reasignar a otro equipo disponible del mismo tipo.
-    2. Mantener la asignación si el taller ingresa el equipo a mantenimiento preventivo antes de ese turno (al registrar el mantenimiento, el sistema automáticamente restaura las asignaciones de `"EN_RIESGO"` a `"PROGRAMADA"`).
+El cierre marca sus asignaciones pendientes `EN_RIESGO` y conserva la razón. El panel muestra la alerta. El supervisor puede registrar mantenimiento o cancelar la asignación con motivo y agregar otro recurso. No se borran reservas ni se oculta su historia.
 
----
+Se revalidan recursos al cerrar, para impedir que una reserva previa permita operar después de un bloqueo. El mantenimiento libera el equipo y restaura asignaciones de riesgo únicamente si la certificación sigue cubriendo toda la jornada; si no, conserva el riesgo con el motivo actualizado.
 
-### Decisión 2: ¿Se puede forzar una asignación con autorización de un supervisor? Si permites la excepción, ¿cómo queda registrada?
-* **Criterio adoptado:** **Sí se permite, pero bajo estricta auditoría de seguridad minera y con justificación no trivial.**
-* **Sustento técnico y operativo:**
-  - En una operación minera real existen contingencias críticas (ej. desprendimiento de talud o necesidad de mover un equipo para liberar un carril de emergencia) donde la jefatura de guardia asume la responsabilidad de operar un equipo bloqueado por horas de mantenimiento o un operador en proceso de revalidación.
-  - **Límites de la excepción:** **No se permite override por colisión física** (un equipo u operador no puede clonarse para estar en dos lugares en el mismo turno; las reglas 6 y 7 son inviolables físicamente).
-  - **Registro:** Se exige el código/identificador del supervisor (`override_by`) y una justificación textual explicativa obligatoria de al menos 10 caracteres (`override_reason`).
-  - La asignación se persiste con `is_override = true`, fecha y hora de la excepción (`override_at`), y genera un registro inmutable en la tabla `audit_logs` que se visualiza con un badge rojo de "Excepción de Supervisor" en toda la interfaz.
+### 2. Excepciones de supervisor
 
----
+**No se permite saltar las reglas de mantenimiento, vigencia o colisión**, ni siquiera con rol supervisor. La consigna permite decidir; se opta por mantener las invariantes de asignación. La autorización habilita la operación, no convierte en válido un equipo bloqueado. Los campos históricos de override permanecen en el esquema para compatibilidad, pero las nuevas solicitudes forzadas se rechazan.
 
-### Decisión 3: El mantenimiento se hizo 30 horas después del umbral. ¿El siguiente ciclo se cuenta desde el umbral o desde el horómetro real?
-* **Criterio adoptado:** **Se cuenta desde el HORÓMETRO REAL al momento del servicio (`horometer_at_maintenance`).**
-* **Sustento de ingeniería de confiabilidad (RCM / Reliability Centered Maintenance):**
-  - Si un equipo con ciclo de 250 horas recibe su mantenimiento preventivo a las 280 horas (30h de desfase), en ese momento se cambian aceites de motor, fluidos hidráulicos, filtros y piezas de desgaste.
-  - **Los fluidos y piezas nuevas tienen una vida útil nominal calibrada a partir de su instalación a las 280 horas.**
-  - Si el siguiente mantenimiento se programara a las 500h (contando desde el umbral teórico de 250h), el equipo entraría al taller habiendo operado solo **220 horas reales** (500 - 280), desechando fluidos aún útiles, generando sobrecostos de lubricantes y provocando una indisponibilidad injustificada de la flota.
-  - Por ello, el sistema almacena `last_maintenance_horometer = 280` y fija el próximo umbral en `280 + 250 = 530h`. Esto refleja la realidad física del activo.
+### 3. Mantenimiento tardío
 
----
+El nuevo ciclo parte del **horómetro real de la intervención**. Si el intervalo es 250 h y se atiende a 280 h, el siguiente umbral es 530 h. La demora queda en el historial; no se declara que el mantenimiento se realizó a 250 h. El horómetro registrado nunca puede retroceder respecto del actual. Si la intervención informa un valor mayor, se actualizan tanto el horómetro como la base del ciclo.
 
-### Decisión 4: El turno se cerró con más o menos horas de las planificadas. ¿Cómo lo manejas?
-* **Criterio adoptado:** **Se capturan las horas efectivamente trabajadas (`actual_duration_hours`) al momento del cierre formal del turno.**
-* **Sustento técnico y operativo:**
-  - En minería las condiciones climáticas (lluvia, neblina), voladuras o fallas eléctricas alteran la duración de la jornada efectiva.
-  - Al cerrar el turno, el modal solicita las `actual_hours` (validando $0 \le \text{horas} \le 24$).
-  - Son estas horas reales (no las teóricas planificadas) las que se suman al horómetro del equipo. Si se planificaron 8h pero solo se trabajaron 6h por tronadura, se suman 6h. Si hubo sobretiempo y se trabajaron 10h, se suman 10h, lo que podría adelantar el bloqueo.
+### 4. Horas reales distintas a las planeadas
 
----
+La planificación no se reescribe. Al cerrar se guarda la duración real y se suma a cada equipo activo; la auditoría conserva ambas cifras y los bloqueos resultantes. Se aceptan 0–24 h reales y 0.5–24 h planificadas. Una asignación cancelada no recibe horas.
 
-### Decisión 5: Una certificación vence a mitad de un turno ya programado a futuro. ¿Qué haces?
-* **Criterio adoptado:** **Se valida contra la fecha del turno y la totalidad de la jornada. Si vence antes de la conclusión del turno, se rechaza la asignación regular.**
-* **Sustento normativo y de seguridad (MSHA / D.S. 024-2016-EM):**
-  - Operar un equipo pesado con una certificación que expira durante el turno infringe las normas de seguridad minera y expone a la compañía a responsabilidades legales y pérdida de cobertura de seguros en caso de siniestro.
-  - El sistema compara la fecha de vencimiento (`expiration_date`) con la fecha del turno programado (`shift.date`). Si `expiration_date < shift.date`, la asignación es rechazada preventivamente indicando la fecha exacta en que venció la credencial.
+Esta versión utiliza **una duración real común por turno**, acorde al formulario de jornada. No modela pausas o trabajo individual distinto por equipo; con más tiempo añadiría partes de horas por asignación y control de inicio real. No hay una acción de reapertura que pueda sumar o descontar horas de forma ambigua.
 
----
+### 5. Certificación que vence durante un turno nocturno
 
-### Decisión 6: Concurrencia — Dos supervisores intentan asignar el mismo equipo al mismo turno al mismo tiempo. ¿Cómo se garantiza que no entren ambas?
-* **Criterio adoptado:** **Garantía a nivel de base de datos relacional mediante restricciones de unicidad compuestas atómicas y transacciones ACID.**
-* **Sustento técnico:**
-  - Las validaciones a nivel de software (*in-memory checks*) son propensas a colisiones cuando dos peticiones HTTP ocurren en hilos o instancias concurrentes en la misma fracción de milisegundo (*Check-Then-Act race condition*).
-  - En el esquema relacional se declararon restricciones únicas a nivel de base de datos:
-    ```sql
-    CONSTRAINT uq_shift_equipment UNIQUE (shift_id, equipment_id);
-    CONSTRAINT uq_shift_operator UNIQUE (shift_id, operator_id);
-    ```
-  - Cuando dos supervisores envían la solicitud en paralelo, la primera transacción adquiere el bloqueo de fila e inserta el registro; la segunda transacción es rechazada por el motor relacional disparando una violación de clave única.
-  - El controlador de la API intercepta este error y responde de inmediato con un código HTTP `409 Conflict` y un mensaje claro: *"Conflicto de concurrencia: El recurso ya fue asignado en este turno por otro supervisor."*
+La fecha de vencimiento es válida hasta el final de ese día en Perú. Se calcula el final exclusivo del turno con su duración. Una noche de 8 h que empieza el 8 a las 18:00 termina el 9 a las 02:00; necesita una certificación vigente también el día 9. Si termina exactamente a medianoche, basta la vigencia del día anterior. La fecha de emisión tampoco puede ser posterior al inicio.
 
----
+La regla se aplica al programar y se vuelve a comprobar con las horas reales al cerrar. Si varias causas fallan, se devuelven todas. No se depende de la zona horaria de la máquina ni de comparar solo `shift.date`.
 
-## 3. Arquitectura en Capas y SOA con Degradación Elegante (*Graceful Degradation*)
+### 6. Supervisores simultáneos
 
-Siguiendo las directrices del requerimiento, el sistema se estructuró en 4 capas estrictas con servicios desacoplados:
+Cada comando HTTP se ejecuta en una transacción PostgreSQL. `AsyncLocalStorage` mantiene la misma conexión para todos los repositorios, auditoría e idempotencia. La respuesta HTTP se envía **después de COMMIT**.
 
-### 3.1. Capas del Sistema
-1. **Dominio (`backend/src/domain/`)**: Entidades de negocio puras y contratos tipados. Sin dependencias externas.
-2. **Repositorios / Acceso a Datos (`backend/src/repositories/`)**: Abstracción del almacenamiento con interfaces (`IEquipmentRepository`, `IOperatorRepository`, `IShiftRepository`, etc.). Permite alternar entre PostgreSQL en producción y un motor relacional en memoria para tests instantáneos.
-3. **Servicios SOA (`backend/src/services/`)**: Módulos independientes por contexto delimitado:
-   - `EquipmentService`
-   - `OperatorService`
-   - `ShiftService` (validación exhaustiva de reglas 5 a 11)
-   - `MaintenanceService`
-   - `ProjectionService` (Regla 12)
-   - `AuditService`
-4. **Controladores y Rutas API (`backend/src/controllers/`, `backend/src/routes/`)**: Manejo de peticiones HTTP REST, serialización y códigos de error semánticos.
+Un `pg_advisory_xact_lock` común serializa las escrituras entre todas las instancias de la API. Es una decisión explícita para una sola operación minera con bajo volumen de comandos; simplifica la relación entre cierre, asignación y mantenimiento. Las lecturas siguen concurrentes. A mayor escala se sustituiría por bloqueos ordenados por recurso y una estrategia de serialización con reintentos.
 
-### 3.2. Degradación Elegante (*Resilient Executor & Circuit Breaker*)
-Para evitar que la caída o latencia de un servicio secundario interrumpa la operativa crítica de asignaciones y cierre de turnos:
-- Se implementó `ResilientExecutor` en `backend/src/resilience/resilient-executor.ts`.
-- Si el servicio analítico de **Proyección a 7 Días** o el servicio de **Auditoría** sufren alta latencia o fallos de infraestructura, el sistema:
-  1. Registra el incidente e incrementa el contador de fallos.
-  2. Activa un **Circuit Breaker** que cambia el estado a `DEGRADED` o `DOWN`.
-  3. Ejecuta de forma transparente una acción de fallback (cálculo lineal seguro o respuesta en caché).
-  4. Los servicios críticos del núcleo (asignación de recursos, cierre de turno, registro de mantenimientos) siguen operando al 100% sin interrupciones.
-  5. La interfaz visualiza una alerta informativa de *"Modo de Degradación Elegante Activado"* con métricas de salud en `/api/health`.
+Los índices únicos actúan además como defensa en PostgreSQL. Se validan cruces de horarios entre jornadas cuando una duración extendida produce solapamiento. Las pruebas usan dos instancias, dos pools y una base real; no simulan concurrencia con un array en memoria.
 
-### 3.3. Inyección de Dependencias (IoC Container) y Clean Code (SOLID)
-Para garantizar la máxima mantenibilidad, testeabilidad y desacoplamiento del código:
-1. **Contenedor IoC Tipado (`backend/src/core/container/container.ts`)**:
-   - Implementación de un contenedor de inversión de control que gestiona el ciclo de vida de los componentes (fábricas perezosas y singletons).
-   - Inversión de Dependencias estricta (DIP): Los módulos de alto nivel dependen de abstracciones e interfaces (`IEquipmentRepository`, `IShiftRepository`), no de implementaciones concretas.
-   - Centralización en un **Composition Root** (`backend/src/core/container/bootstrap.ts`) que resuelve el grafo completo de dependencias en el arranque o durante los tests unitarios.
-2. **Jerarquía de Errores de Dominio (`backend/src/core/errors/app-error.ts`)**:
-   - Sustitución de `Error` genéricos por tipos semánticos: `NotFoundError` (404), `ConflictError` (409), `ValidationError` (400) y `BusinessRuleViolationError` (422).
-   - `BusinessRuleViolationError` transporta el listado completo de violaciones de reglas de negocio para la **Regla 11**, permitiendo al frontend renderizar cada causa de forma estructurada.
-3. **Manejo Centralizado de Errores (`backend/src/core/middleware/error.middleware.ts`)**:
-   - Middleware de Express que captura excepciones no controladas y formatea respuestas HTTP con códigos de estado canónicos, eliminando la duplicación de bloques try/catch en los controladores.
-4. **Constantes y Reglas de Negocio Desacopladas (`backend/src/core/constants/index.ts`)**:
-   - Eliminación de números mágicos (umbrales de mantenimiento, límites de jornada, longitud mínima de justificación de supervisor) en un archivo centralizado de configuración.
+## Creación integral e idempotencia
 
----
+`POST /api/shifts` exige al menos una pareja en `assignments`. Se comprueban todas las filas, incluidas repeticiones en el formulario, antes de persistir. La transacción revierte turno, asignaciones, auditoría y cola si falla cualquier parte. Se mantienen las observaciones que el repositorio anterior omitía.
 
-## 4. Alcance, Trade-offs y Mejoras Futuras
+Las escrituras exigen `Idempotency-Key`. La huella incluye método, ruta y cuerpo ya validado; la clave pertenece al usuario. Repetir la misma petición devuelve el mismo cuerpo y código con `Idempotency-Replayed: true`. Usar la clave para otro contenido da `409`. La clave y el resultado se guardan en la misma transacción que los efectos.
 
-### Qué se priorizó (El Núcleo Sólido):
-1. Cumplimiento matemático y relacional de las 12 reglas obligatorias.
-2. Validación multi-error acumulativa en asignaciones (Regla 11).
-3. Simulación prospectiva a 7 días basada en turnos programados (Regla 12).
-4. Pruebas automatizadas completas (10 tests unitarios y de resiliencia).
-5. Contenedorización lista para despliegue con Docker y Docker Compose.
-6. Facilidad de evaluación mediante el botón *"Reset Datos Demo"*.
+Los errores de validación o transacciones revertidas pueden reintentarse. El frontend conserva en `sessionStorage` la clave de solicitudes con fallo de red/servidor y la reutiliza al reenviar el mismo formulario. La retención termina si el usuario cierra esa sesión del navegador; el servidor conserva el registro de idempotencia. Una política de archivo/retención del historial requerirá definir una ventana contractual antes de borrar claves.
 
-### Qué se dejó fuera y qué se implementaría con más tiempo:
-- **Telemetría IoT en Tiempo Real**: Conexión a buses CAN J1939 de los camiones para leer los horómetros directamente desde el ECM del motor sin intervención manual de despachadores.
-- **Sincronización Offline (PWA con IndexedDB)**: En operaciones mineras a tajo abierto o subterráneas remotas sin cobertura 4G/WiFi constante, permitir que los despachadores asignen en una tablet local y los datos se sincronicen transaccionalmente al recuperar señal.
-- **Optimización de Asignaciones con Algoritmos Genéticos o Programación Lineal**: Sugerir automáticamente el mejor emparejamiento operador-equipo maximizando la vida útil de la flota y minimizando el tiempo muerto.
-- **Autenticación RBAC con JWT/OAuth2**: Roles diferenciados (Operador, Despachador, Supervisor de Guardia, Superintendente de Mantenimiento).
+## Cola y recuperación
 
----
+La evidencia local no se pierde si falla el receptor: el evento se inserta junto con el cambio de negocio. No se hace una llamada HTTP externa dentro de la transacción del turno. Si falla la auditoría local, se revierte el comando; no se responde éxito silenciosamente.
 
-## 5. Declaración sobre el Uso de Inteligencia Artificial
+El worker reclama cada evento con `FOR UPDATE SKIP LOCKED`, un token de propiedad y un lease de 30 s. Se confirma la entrega solo con respuesta 2xx del receptor. Los fallos vuelven a `PENDING` con backoff exponencial de 5 s a 1 h. Después de 10 intentos quedan `DEAD` visibles para revisión. El supervisor puede reencolarlos y esa acción se audita. Un worker caído libera sus eventos al vencer el lease.
 
-De acuerdo con las instrucciones de la prueba:
-- **Herramientas de IA utilizadas:** Antigravity / Gemini 3.8 Flash como asistente de programación por pares (*pair programmer*).
-- **Para qué se utilizó:**
-  - Generación de la estructura inicial de tipos TypeScript y esquemas relacionales SQL.
-  - Redacción rápida de casos de prueba unitarios en Vitest.
-  - Sugerencia de componentes visuales en React + Tailwind CSS.
-- **Sustento del desarrollador:**
-  - Cada línea de código, regla de negocio, restricción de integridad relacional (`UNIQUE`, claves foráneas) y lógica de degradación elegante ha sido revisada, comprendida y verificada manualmente mediante ejecución de suites de pruebas locales y análisis de dependencias.
+La garantía es **al menos una entrega**, no exactamente una entrega de red. El consumidor debe ser idempotente. El receptor demo usa `notification_inbox.id` como PK: si procesa un evento y se pierde la respuesta, la siguiente entrega no crea otro registro. Se firma el cuerpo con HMAC-SHA256 usando un secreto compartido.
+
+La cola cubre eventos hacia la integración externa; no convierte las reglas de negocio en operaciones offline. Si PostgreSQL cae, no puede persistirse una nueva orden en la misma base; se devuelve error y se reintenta sin duplicar usando la clave. Una cola de comandos offline requeriría otro almacén durable, semántica de conflictos y aceptación explícita de trabajo pendiente.
+
+En Docker el worker permanece activo. En Vercel Hobby el cron es diario y limitado a cinco eventos por invocación, por lo que es una demostración de entrega diferida, no recuperación inmediata. La guía explica el worker externo para mayor frecuencia.
+
+## Proyección y observabilidad
+
+La ventana contiene siete fechas: inicio a inicio + 6, inclusive. Se ordenan las jornadas, se agregan las horas planificadas de asignaciones activas y se identifica el primer turno que alcanza el umbral. Se incluyen reservas en riesgo como demanda prevista, suponiendo que el mantenimiento se realiza antes de ejecutarlas. Los equipos ya vencidos se señalan aparte.
+
+Si falla la proyección, la respuesta lleva `isDegraded` y la interfaz advierte que solo muestra datos actuales; esos valores no son una previsión válida. Un fallo de PostgreSQL no se disfraza de disponibilidad con un fallback en memoria.
+
+Prometheus mide HTTP, latencia, memoria, disponibilidad de PostgreSQL, flota y cola. Grafana presenta esos indicadores. La auditoría muestra responsable, detalles y `request_id`; el evento externo conserva ese contexto. Los logs no imprimen contraseñas, JWT ni cadenas de conexión. No se implementaron spans distribuidos ni alertas enviadas a terceros.
+
+## Autenticación y permisos
+
+JWT HS256 con algoritmo permitido explícitamente, issuer, audience, expiración de ocho horas y un identificador de sesión. Se usa cookie `HttpOnly`/`SameSite=Strict`, `Secure` en HTTPS, y se comprueba en PostgreSQL que la sesión no esté revocada y el usuario esté activo. Logout invalida el token incluso en otra instancia. El rol se lee de la base; no se confía en el formulario ni en un nombre de supervisor ingresado a mano.
+
+Supervisor puede escribir; Consulta solo lee. Las mutaciones requieren un encabezado propio, JSON y no se habilita CORS abierto. Los intentos de login se limitan por cuenta e IP con almacenamiento compartido. No hay autorregistro, recuperación de contraseña, MFA ni consola de administración de usuarios. Las cuentas iniciales se crean desde variables de entorno; los hashes usan scrypt con salt aleatorio.
+
+## Qué se dejó fuera y siguientes pasos
+
+- Partes de horas por equipo, inicio real, pausas y reapertura contable de jornadas.
+- CRUD administrativo de usuarios, recuperación de acceso y MFA.
+- Migraciones versionadas y despliegues de esquema separados del arranque; hoy el esquema es idempotente y conserva los datos existentes compatibles.
+- Planes de mantenimiento del fabricante, múltiples faenas y configuración de intervalos desde la UI.
+- Ventanas de retención, archivado de auditoría/outbox/idempotencia, backups programados y prueba de restauración.
+- Calendario con arrastrar y soltar, paginación del catálogo, exportaciones y PWA offline.
+- OpenTelemetry/Tempo, Loki, Alertmanager e integración real de notificaciones.
+
+El stack completo está preparado para Docker. Vercel tiene un adaptador Node y una guía de publicación con PostgreSQL externo. **No se ha publicado con la cuenta del propietario ni se afirma tener un enlace público verificado.** La petición actual es dejar la implementación y explicar cómo desplegarla.
+
+## Uso de IA y repositorio
+
+Se utilizó **OpenAI Codex** para inspeccionar el proyecto, implementar autenticación, transacciones/idempotencia, cola, interfaz, pruebas y documentación, y para consultar documentación oficial de despliegue. Se ejecutaron pruebas unitarias, de integración con PostgreSQL y revisiones en navegador. Esta declaración no certifica que el autor haya revisado manualmente cada línea: esa revisión y la capacidad de explicarla siguen siendo parte de la entrega de la evaluación.
+
+La versión previa del documento declaraba otras herramientas. Esa declaración histórica puede consultarse en Git; no se verifica ni se extiende aquí. Se conserva el historial local y se elimina el remoto `origin` por instrucción del propietario. El repositorio remoto existente no se borra, no se publican cambios y no se inventan enlaces de entrega.

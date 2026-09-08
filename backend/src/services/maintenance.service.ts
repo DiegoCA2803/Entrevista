@@ -1,14 +1,21 @@
 import { MaintenanceRecord, Equipment } from '../domain/types.js';
-import { IMaintenanceRepository, IEquipmentRepository, IShiftRepository } from '../repositories/interfaces.js';
+import {
+  IMaintenanceRepository,
+  IEquipmentRepository,
+  IShiftRepository
+} from '../repositories/interfaces.js';
 import { AuditService } from './audit.service.js';
 import { NotFoundError, ValidationError } from '../core/errors/app-error.js';
+import { OperatorService } from './operator.service.js';
+import { localDate, shiftLastDate } from '../domain/time.js';
 
 export class MaintenanceService {
   constructor(
     private readonly maintenanceRepo: IMaintenanceRepository,
     private readonly equipmentRepo: IEquipmentRepository,
     private readonly shiftRepo: IShiftRepository,
-    private readonly auditService?: AuditService
+    private readonly auditService?: AuditService,
+    private readonly operatorService?: OperatorService
   ) {}
 
   async getAllMaintenanceRecords(): Promise<MaintenanceRecord[]> {
@@ -44,13 +51,14 @@ export class MaintenanceService {
     }
 
     // Horómetro real al momento del servicio
-    const horometerAtPm = data.horometer_at_maintenance !== undefined
-      ? Number(data.horometer_at_maintenance)
-      : equipment.horometer;
+    const horometerAtPm =
+      data.horometer_at_maintenance !== undefined
+        ? Number(data.horometer_at_maintenance)
+        : equipment.horometer;
 
-    if (horometerAtPm < equipment.last_maintenance_horometer) {
+    if (!Number.isFinite(horometerAtPm) || horometerAtPm < equipment.horometer) {
       throw new ValidationError(
-        `El horómetro de mantenimiento (${horometerAtPm}) no puede ser menor al del último mantenimiento (${equipment.last_maintenance_horometer}).`
+        `El horómetro de mantenimiento debe ser válido y no puede ser menor al actual (${equipment.horometer}h).`
       );
     }
 
@@ -72,12 +80,25 @@ export class MaintenanceService {
     );
 
     // 3. Resolución de conflicto en turnos futuros: si había asignaciones "EN_RIESGO" para este equipo, restaurarlas
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDate();
     const upcomingAssignments = await this.shiftRepo.findUpcomingAssignmentsForEquipment(equipment.id, today);
     let restoredAssignmentsCount = 0;
 
     for (const assignment of upcomingAssignments) {
       if (assignment.status === 'EN_RIESGO') {
+        const shift = assignment.shift;
+        if (shift && this.operatorService) {
+          const cert = await this.operatorService.validateCertificationForShift(
+            assignment.operator_id,
+            equipment.type,
+            shift.date,
+            shiftLastDate(shift.date, shift.period, shift.planned_duration_hours)
+          );
+          if (!cert.isValid) {
+            await this.shiftRepo.updateAssignmentStatus(assignment.id, 'EN_RIESGO', cert.reason);
+            continue;
+          }
+        }
         await this.shiftRepo.updateAssignmentStatus(assignment.id, 'PROGRAMADA', null);
         restoredAssignmentsCount++;
       }

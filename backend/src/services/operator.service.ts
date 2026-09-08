@@ -60,7 +60,8 @@ export class OperatorService {
   async validateCertificationForShift(
     operatorId: string,
     equipmentType: EquipmentType,
-    shiftDate: string
+    shiftDate: string,
+    lastDate: string = shiftDate
   ): Promise<CertificationCheckResult> {
     const operator = await this.operatorRepo.findById(operatorId);
     if (!operator) {
@@ -78,7 +79,7 @@ export class OperatorService {
     }
 
     const certs = await this.operatorRepo.getCertificationsByOperatorId(operatorId);
-    const matchingCerts = certs.filter(c => c.equipment_type === equipmentType);
+    const matchingCerts = certs.filter((c) => c.equipment_type === equipmentType);
 
     if (matchingCerts.length === 0) {
       return {
@@ -88,9 +89,7 @@ export class OperatorService {
     }
 
     // Buscar una certificación vigente para la fecha del turno (inclusive)
-    const validCert = matchingCerts.find(
-      c => c.issued_date <= shiftDate && c.expiration_date >= shiftDate
-    );
+    const validCert = matchingCerts.find((c) => c.issued_date <= shiftDate && c.expiration_date >= lastDate);
 
     if (validCert) {
       return {
@@ -100,7 +99,12 @@ export class OperatorService {
     }
 
     // Si tiene certificaciones para ese tipo pero ninguna está vigente en la fecha del turno
-    const latestCert = matchingCerts[0];
+    const latestCert = matchingCerts.sort((a, b) => b.expiration_date.localeCompare(a.expiration_date))[0];
+    if (latestCert.expiration_date >= shiftDate && latestCert.expiration_date < lastDate)
+      return {
+        isValid: false,
+        reason: `La certificación de ${operator.name} vence el ${latestCert.expiration_date} durante el turno. Debe cubrir toda la jornada hasta ${lastDate}.`
+      };
     const isExpired = latestCert.expiration_date < shiftDate;
 
     if (isExpired) {

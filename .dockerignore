@@ -1,0 +1,11 @@
+.git
+.env*
+.vercel
+node_modules
+frontend/node_modules
+backend/dist
+frontend/dist
+coverage
+test-results
+*.log
+artifacts
