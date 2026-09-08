@@ -77,6 +77,7 @@ export async function createApp(customRepos?: AppRepositories) {
     }
     next();
   });
+  app.get('/api/auth/demo', auth.demo);
   app.post('/api/auth/login', auth.login);
   app.use('/api', auth.requireUser);
   app.get('/api/auth/me', (_req, res) => res.json({ data: res.locals.user }));

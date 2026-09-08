@@ -64,6 +64,37 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
       operators: await repos.operatorRepo.findAll()
     });
 
+    it('las credenciales demo son públicas solo con opt-in y nunca muestran contraseñas desactualizadas', async () => {
+      const previousFlag = process.env.SHOW_DEMO_CREDENTIALS;
+      const originalPassword = process.env.ADMIN_PASSWORD;
+      try {
+        process.env.SHOW_DEMO_CREDENTIALS = 'false';
+        const hidden = await createApp(repos);
+        expect((await request(hidden.app).get('/api/auth/demo')).body.data).toEqual([]);
+        process.env.SHOW_DEMO_CREDENTIALS = 'true';
+        const demo = await createApp(repos);
+        const response = await request(demo.app).get('/api/auth/demo');
+        expect(response.status).toBe(200);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.body.data).toEqual([
+          { email: process.env.ADMIN_EMAIL, password: originalPassword, role: 'SUPERVISOR' },
+          { email: process.env.VIEWER_EMAIL, password: process.env.VIEWER_PASSWORD, role: 'CONSULTA' }
+        ]);
+        expect(JSON.stringify(response.body)).not.toContain(process.env.JWT_SECRET);
+        const account = response.body.data[0];
+        expect((await request(demo.app).post('/api/auth/login').set(headers).send(account)).status).toBe(200);
+        process.env.ADMIN_PASSWORD = 'Changed.Environment.Password2026!';
+        const stale = await createApp(repos);
+        const accounts = (await request(stale.app).get('/api/auth/demo')).body.data;
+        expect(accounts).toHaveLength(1);
+        expect(accounts[0].role).toBe('CONSULTA');
+      } finally {
+        process.env.ADMIN_PASSWORD = originalPassword;
+        if (previousFlag === undefined) delete process.env.SHOW_DEMO_CREDENTIALS;
+        else process.env.SHOW_DEMO_CREDENTIALS = previousFlag;
+      }
+    });
+
     it('protege lecturas, rechaza JWT alterados y permite consulta sin escrituras', async () => {
       expect((await request(first.app).get('/api/equipment')).status).toBe(401);
       expect(

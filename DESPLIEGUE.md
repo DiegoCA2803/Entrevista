@@ -1,86 +1,25 @@
 # Despliegue de MineFleet
 
-## 1. Vercel gratis para la demostración, sin GitHub
+## 1. Vercel con Docker + PostgreSQL en Neon
 
-Esta configuración publica React como archivos estáticos y Express como una función Node.js; PostgreSQL vive en Neon. Usa la raíz del proyecto, no solamente `frontend/`. Se incluyen `vercel.json` y `api/index.js`.
+La aplicacion se publica como un contenedor React + Express usando `Dockerfile.vercel`. La base de datos se aloja por separado en Neon. Elige Free/Hobby para la demostracion, sujeto a las cuotas de cada proveedor.
 
-### Base de datos
+Sigue las guias en este orden:
 
-1. Crea un proyecto en el plan Free de [Neon](https://neon.com/docs/introduction/plans).
-2. En **Connect**, selecciona conexión con pooling y copia la cadena PostgreSQL. El hostname suele incluir `-pooler`.
-3. Esa cadena será `DATABASE_URL`. Mantén TLS; puedes usar `sslmode=verify-full` para verificar el certificado. No uses la dirección Docker `postgres:5432` en Vercel.
+1. [Crear la base de datos y obtener DATABASE_URL en Neon](docs/NEON.md).
+2. [Publicar el contenedor en Vercel desde GitHub](docs/VERCEL.md).
+3. [Mostrar las pruebas automatizadas y demostrar caída/recuperación](docs/PRUEBA.md).
 
-Neon ofrece [pooling en su plan Free](https://neon.com/docs/connect/connection-pooling). El pool de MineFleet está limitado a cinco conexiones por instancia. Las tablas se crean de forma idempotente y el seed se ejecuta una sola vez si la flota está vacía.
+`npm run setup:vercel` genera `.env.vercel.local` con secretos y contraseñas aleatorios sin sobrescribir el archivo existente. Completa la conexion de Neon y carga las variables en Vercel. El archivo privado no se sube a GitHub ni se incluye en la imagen.
 
-### Proyecto de Vercel
-
-Desde la carpeta raíz:
-
-```bash
-npx vercel login
-npx vercel link
-```
-
-Selecciona tu cuenta personal y crea un proyecto. No hace falta reconectar el repositorio de GitHub. Si aparecen ajustes de framework, usa **Other**, Node.js **22.x**, y conserva los comandos definidos en `vercel.json`:
-
-- Install: `npm ci && npm ci --prefix frontend`
-- Build: `npm run build`
-- Output: `frontend/dist`
-
-Antes de publicar, abre **Project → Settings → Environment Variables** y configura:
-
-| Variable                          | Valor                                                                    |
-| --------------------------------- | ------------------------------------------------------------------------ |
-| `DATABASE_URL`                    | Cadena pooled de Neon con TLS                                            |
-| `NODE_ENV`                        | `production`                                                             |
-| `JWT_SECRET`                      | Secreto aleatorio de al menos 32 caracteres                              |
-| `ADMIN_EMAIL`                     | Correo de acceso de prueba                                               |
-| `ADMIN_PASSWORD`                  | Contraseña de al menos 12 caracteres                                     |
-| `ADMIN_NAME`                      | Nombre visible del supervisor                                            |
-| `VIEWER_EMAIL`, `VIEWER_PASSWORD` | Cuenta opcional de consulta                                              |
-| `SEED_DEMO`                       | `true` para la evaluación                                                |
-| `COOKIE_SECURE`                   | `true`                                                                   |
-| `CRON_SECRET`                     | Secreto aleatorio para el endpoint de cola                               |
-| `METRICS_TOKEN`                   | Secreto aleatorio para métricas                                          |
-| `QUEUE_TARGET_URL`                | Opcional: receptor HTTPS real de eventos                                 |
-| `WEBHOOK_SECRET`                  | Obligatorio si configuras receptor; 32 caracteres aleatorios como mínimo |
-
-Puedes usar **Production** y **Preview**, preferiblemente con bases distintas. Para generar cada secreto:
-
-```bash
-node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
-```
-
-No pegues claves en el código, en variables `VITE_*` ni en Git. `.env` y `.vercel/` están excluidos del repositorio.
-
-Publica:
-
-```bash
-npx vercel --prod
-```
-
-Vercel devuelve la URL `https://<proyecto>.vercel.app`. Ábrela, inicia sesión, crea un turno con sus recursos y comprueba `/api/health`. Añade esa URL al README y a los enlaces de la evaluación. Las credenciales de la guía local solo se aplican si las elegiste también como variables de Vercel.
-
-Los usuarios iniciales se insertan si no existen. Cambiar `ADMIN_PASSWORD` después del primer inicio **no cambia una contraseña almacenada**. El reinicio demo tampoco modifica usuarios. Una gestión completa de usuarios queda fuera de esta entrega.
-
-### Qué significa “gratis” aquí
-
-[Vercel Hobby](https://vercel.com/docs/plans/hobby) está orientado a proyectos personales no comerciales, con límites de uso. Es una opción para esta demo; para una operación comercial hay que revisar el plan aplicable. Neon también tiene cuotas: el plan gratuito no implica capacidad ilimitada.
-
-El cron incluido ejecuta `/api/cron/outbox` **una vez al día**, en un lote de hasta cinco eventos. En [Hobby los cron jobs no pueden ejecutarse más de una vez al día](https://vercel.com/docs/cron-jobs/usage-and-pricing), y la ejecución no tiene precisión de minuto. Si hay más eventos o fallos, quedan pendientes para la siguiente invocación. Vercel agrega `Authorization: Bearer <CRON_SECRET>` al cron.
-
-La versión Vercel no inicia un worker con `setInterval`. Para recuperación rápida necesitas un worker persistente en otro host o un scheduler externo que llame al endpoint autenticado; eso requiere configurar ese servicio y revisar sus condiciones. Sin receptor configurado, los eventos se guardan pero no se declaran entregados.
-
-### Docker y Vercel
-
-La [documentación actual de Vercel admite imágenes OCI como funciones](https://vercel.com/kb/guide/does-vercel-support-docker-deployments), pero eso no ejecuta este stack de Docker Compose con PostgreSQL, worker continuo, Prometheus y Grafana. La configuración entregada para Vercel usa Node.js y archivos estáticos. Para desplegar todos los contenedores juntos, utiliza la opción siguiente. No se ha validado aquí una publicación mediante Vercel Container Registry.
+Vercel aloja el servidor HTTP; PostgreSQL conserva todos los datos fuera del contenedor. El worker continuo, Prometheus y Grafana pertenecen al despliegue completo de Docker que se explica abajo. El cron de Vercel procesa un lote diario si hay un receptor externo configurado.
 
 ## 2. Docker completo en tu computadora o una VPS
 
 ```bash
 npm ci
 npm run setup
-docker compose --profile monitoring up -d --build
+docker compose up -d --build
 docker compose ps
 ```
 
@@ -92,6 +31,8 @@ docker compose ps
 | `notifications` | Receptor de prueba con firma HMAC y deduplicación por ID |
 | `prometheus`    | Captura métricas cada 15 segundos y conserva siete días  |
 | `grafana`       | Dashboard provisionado, puerto local 3001                |
+
+Prometheus y Grafana son opcionales. Solo se inician al añadir `--profile monitoring`; no hacen falta para la evaluación ni para demostrar la cola.
 
 El receptor de prueba guarda eventos en `notification_inbox`; no envía correos, SMS ni mensajes a terceros. Para una integración real cambia `QUEUE_TARGET_URL` en `x-app-env` de Compose y configura el mismo `WEBHOOK_SECRET` en el receptor.
 

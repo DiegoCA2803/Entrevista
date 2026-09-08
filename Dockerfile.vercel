@@ -1,0 +1,22 @@
+# Vercel detects this file and routes HTTP requests to this container.
+# Set PORT=4000 in Vercel Project Settings. PostgreSQL is provided externally.
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+COPY frontend/package*.json ./frontend/
+RUN npm ci && npm ci --prefix frontend
+COPY backend ./backend
+COPY frontend ./frontend
+COPY scripts ./scripts
+RUN npm run build
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production PORT=4000
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build --chown=node:node /app/backend/dist ./backend/dist
+COPY --from=build --chown=node:node /app/frontend/dist ./frontend/dist
+USER node
+EXPOSE 4000
+CMD ["node", "backend/dist/server.js"]

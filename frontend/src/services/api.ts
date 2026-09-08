@@ -74,6 +74,8 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
 }
 
 export const api = {
+  getDemoAccounts: () =>
+    fetchApi<Array<{ email: string; password: string; role: User['role'] }>>('/auth/demo'),
   login: (email: string, password: string) =>
     fetchApi<User>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   me: () => fetchApi<User>('/auth/me'),

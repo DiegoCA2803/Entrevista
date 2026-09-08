@@ -9,10 +9,10 @@ Requisitos: Node.js 22 y Docker Desktop con contenedores Linux. Desde la raíz d
 ```bash
 npm ci
 npm run setup
-docker compose --profile monitoring up -d --build
+docker compose up -d --build
 ```
 
-`setup` crea `.env` con secretos aleatorios sin sobrescribir una configuración existente. Compose levanta PostgreSQL, aplicación, worker, receptor de eventos, Prometheus y Grafana. Los volúmenes conservan los datos al reiniciar.
+`setup` crea `.env` con secretos aleatorios sin sobrescribir una configuración existente. Compose levanta PostgreSQL, aplicación, worker y receptor de eventos. Los volúmenes conservan los datos al reiniciar. **Prometheus y Grafana son opcionales y no se necesitan para ejecutar ni evaluar la aplicación.**
 
 | Acceso local           | Dirección             | Credenciales de demostración                           |
 | ---------------------- | --------------------- | ------------------------------------------------------ |
@@ -21,9 +21,11 @@ docker compose --profile monitoring up -d --build
 | Grafana                | http://localhost:3001 | `admin` / `MineFleet.Grafana2026!`                     |
 | Prometheus             | http://localhost:9090 | Solo expuesto en localhost                             |
 
-En Grafana abre **Dashboards → MineFleet → MineFleet · Operación y servicios**. El dashboard y el origen de datos se cargan automáticamente. Sin métricas, puedes usar `docker compose up -d --build`.
+Los accesos de Grafana y Prometheus solo están disponibles si habilitas explícitamente `docker compose --profile monitoring up -d`. Para la prueba bastan el panel **Trazabilidad y servicios** y los informes automatizados.
 
 Estas contraseñas son exclusivamente de demostración. Para publicar, configura credenciales propias y `COOKIE_SECURE=true`; revisa [DESPLIEGUE.md](DESPLIEGUE.md).
+
+El login muestra las cuentas de evaluación y permite rellenarlas con un clic cuando `SHOW_DEMO_CREDENTIALS=true`. Los scripts de preparación activan esta opción para la prueba; usa `false` y vuelve a desplegar para ocultarlas fuera de ese contexto. Solo muestra contraseñas que coinciden con las almacenadas. En Vercel se muestran las del archivo privado `.env.vercel.local`, no las contraseñas locales de esta tabla.
 
 ## Qué incluye
 
@@ -66,6 +68,14 @@ PostgreSQL es obligatorio. **Si falla, la aplicación no cambia a memoria ni inv
 
 ## Verificación
 
+Para presentar todas las pruebas y generar un informe:
+
+```bash
+npm run test:evidence
+```
+
+El resultado queda en `artifacts/PRUEBAS.md`, con fecha, commit base y cada caso aprobado o fallido. Requiere PostgreSQL local levantado. Sigue el [guion de demostración de pruebas y caída/recuperación](docs/PRUEBA.md).
+
 ```bash
 npm test
 npm run test:integration
@@ -78,7 +88,7 @@ npm run build
 
 `test:integration` requiere el PostgreSQL local y un usuario con permiso de crear bases. Crea una base aislada `minefleet_test_<aleatorio>` y la elimina al finalizar; nunca ejecuta los tests contra `mine_fleet`. `npm test` omite esa suite cuando no existe `TEST_DATABASE_URL`.
 
-Verificación realizada el 8 de septiembre de 2026: **14 pruebas unitarias y 15 de integración aprobadas**, compilación de producción e imagen Docker generadas. Se comprobó en navegador la creación de un turno con dos asignaciones, el diseño móvil y el tema oscuro. Al detener el receptor, tres eventos permanecieron pendientes; al reiniciarlo se entregaron automáticamente, con tres registros únicos en el consumidor. Prometheus obtuvo el estado `UP` y Grafana cargó sus diez paneles. Las dependencias de producción no presentaron vulnerabilidades conocidas en `npm audit` en esa revisión.
+Verificación realizada el 8 de septiembre de 2026: **14 pruebas unitarias y 16 de integración aprobadas**, compilación de producción e imágenes Docker generadas. Se comprobó en navegador la creación de un turno con dos asignaciones, el diseño móvil, el tema oscuro y el acceso con las cuentas visibles en el login. Al detener el receptor, tres eventos permanecieron pendientes; al reiniciarlo se entregaron automáticamente, con tres registros únicos en el consumidor. El informe reproducible se genera con `npm run test:evidence`. Los monitores opcionales se verificaron previamente, pero no son necesarios para esta evaluación.
 
 ## Casos de prueba iniciales
 
@@ -117,6 +127,6 @@ Los rechazos de negocio responden `422` con todas las `violations`. Duplicados y
 
 ## Publicación y repositorio
 
-La guía [DESPLIEGUE.md](DESPLIEGUE.md) explica **Vercel Hobby + Neon**, sin conectar GitHub, y el despliegue completo con Docker en una VPS. [DECISIONES.md](DECISIONES.md) documenta arquitectura, reglas, garantías y límites.
+La guía [DESPLIEGUE.md](DESPLIEGUE.md) explica paso a paso **Vercel con Docker + PostgreSQL en Neon**, importando este repositorio desde GitHub, y el despliegue completo con Docker Compose en una VPS. `Dockerfile.vercel` compila y sirve React + Express en un contenedor; `vercel.json` conserva el cron diario. `npm run setup:vercel` genera `.env.vercel.local` con credenciales privadas y secretos aleatorios: completa la conexión de Neon y carga esas variables en Vercel. [DECISIONES.md](DECISIONES.md) documenta arquitectura, reglas, garantías y límites.
 
-Se quitó el remoto `origin` de esta copia a petición del propietario, conservando el historial Git. El repositorio que ya exista en GitHub no se elimina. No se ha creado un despliegue público durante esta modificación: el enlace publicado debe añadirse aquí después de desplegar con tu cuenta. La consigna de evaluación también pide acceso al código; desconectar esta copia no reemplaza ese entregable.
+Repositorio: [DiegoCA2803/Entrevista](https://github.com/DiegoCA2803/Entrevista). El remoto `origin` está conectado nuevamente por petición del propietario. No se ha creado un despliegue público durante esta modificación: añade aquí el enlace después de desplegar con tu cuenta y comprobar la aplicación. La imagen se verifica localmente; no se presenta esa prueba como un despliegue remoto en Vercel/Neon.

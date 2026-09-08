@@ -90,6 +90,10 @@ JWT HS256 con algoritmo permitido explícitamente, issuer, audience, expiración
 
 Supervisor puede escribir; Consulta solo lee. Las mutaciones requieren un encabezado propio, JSON y no se habilita CORS abierto. Los intentos de login se limitan por cuenta e IP con almacenamiento compartido. No hay autorregistro, recuperación de contraseña, MFA ni consola de administración de usuarios. Las cuentas iniciales se crean desde variables de entorno; los hashes usan scrypt con salt aleatorio.
 
+Para facilitar la evaluación, `SHOW_DEMO_CREDENTIALS=true` habilita un endpoint público con las cuentas demo y las muestra en el login. Solo devuelve las contraseñas configuradas que coinciden con el hash almacenado; no devuelve JWT_SECRET ni otros secretos. La opción está apagada por defecto en el servidor y se activa expresamente en los scripts de preparación de la demo. Se desactiva con `false` y un nuevo despliegue para uso fuera de la evaluación.
+
+Prometheus y Grafana son un perfil opcional de Compose. No son dependencias del despliegue Vercel ni de las pruebas. La evidencia reproducible se genera con `npm run test:evidence` y el guion de `docs/PRUEBA.md`; distingue los fallos HTTP probados automáticamente, la caída real del receptor en Docker local y los límites del cron de Vercel.
+
 ## Qué se dejó fuera y siguientes pasos
 
 - Partes de horas por equipo, inicio real, pausas y reapertura contable de jornadas.
@@ -100,10 +104,10 @@ Supervisor puede escribir; Consulta solo lee. Las mutaciones requieren un encabe
 - Calendario con arrastrar y soltar, paginación del catálogo, exportaciones y PWA offline.
 - OpenTelemetry/Tempo, Loki, Alertmanager e integración real de notificaciones.
 
-El stack completo está preparado para Docker. Vercel tiene un adaptador Node y una guía de publicación con PostgreSQL externo. **No se ha publicado con la cuenta del propietario ni se afirma tener un enlace público verificado.** La petición actual es dejar la implementación y explicar cómo desplegarla.
+El stack completo está preparado para Docker Compose. Para Vercel se usa `Dockerfile.vercel`: React y Express se compilan dentro de Docker y se sirven desde un único proceso HTTP que escucha en `PORT=4000`. Se retiró el adaptador Node `api/index.js` y las reglas de publicación estática para evitar dos rutas de despliegue simultáneas. PostgreSQL se aloja en Neon; no se incorpora al contenedor efímero. El archivo `vercel.json` permite la detección del contenedor y conserva el cron diario. **No se ha publicado con la cuenta del propietario ni se afirma tener un enlace público verificado.** La imagen se verifica localmente; la conexión real a Neon y la publicación se realizan siguiendo DESPLIEGUE.md con las cuentas del propietario.
 
 ## Uso de IA y repositorio
 
 Se utilizó **OpenAI Codex** para inspeccionar el proyecto, implementar autenticación, transacciones/idempotencia, cola, interfaz, pruebas y documentación, y para consultar documentación oficial de despliegue. Se ejecutaron pruebas unitarias, de integración con PostgreSQL y revisiones en navegador. Esta declaración no certifica que el autor haya revisado manualmente cada línea: esa revisión y la capacidad de explicarla siguen siendo parte de la entrega de la evaluación.
 
-La versión previa del documento declaraba otras herramientas. Esa declaración histórica puede consultarse en Git; no se verifica ni se extiende aquí. Se conserva el historial local y se elimina el remoto `origin` por instrucción del propietario. El repositorio remoto existente no se borra, no se publican cambios y no se inventan enlaces de entrega.
+La versión previa del documento declaraba otras herramientas. Esa declaración histórica puede consultarse en Git; no se verifica ni se extiende aquí. Se conserva el historial local. El remoto `origin`, inicialmente retirado, se conectó nuevamente a `DiegoCA2803/Entrevista` por petición del propietario. No se inventan enlaces de despliegue ni se publican credenciales: `.env.vercel.local` está excluido de Git y de ambos contextos de despliegue.

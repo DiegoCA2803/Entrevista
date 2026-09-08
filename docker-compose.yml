@@ -9,6 +9,7 @@ x-app-env: &app-env
   VIEWER_EMAIL: ${VIEWER_EMAIL:-}
   VIEWER_PASSWORD: ${VIEWER_PASSWORD:-}
   SEED_DEMO: ${SEED_DEMO:-false}
+  SHOW_DEMO_CREDENTIALS: ${SHOW_DEMO_CREDENTIALS:-false}
   COOKIE_SECURE: ${COOKIE_SECURE:-true}
   METRICS_TOKEN: ${METRICS_TOKEN:?Run npm run setup}
   WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Run npm run setup}
@@ -83,7 +84,7 @@ services:
     ports: ['127.0.0.1:3001:3000']
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Run npm run setup}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-MineFleet.Grafana2026!}
       GF_USERS_ALLOW_SIGN_UP: 'false'
     volumes:
       - grafana_data:/var/lib/grafana

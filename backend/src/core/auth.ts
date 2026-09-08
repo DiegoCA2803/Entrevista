@@ -65,6 +65,23 @@ export async function createAuth(repos: AppRepositories) {
     else memoryUsers.set(email, user);
   }
 
+  // Public credentials are opt-in for the evaluation environment only.
+  const demoAccounts: Array<{ email: string; password: string; role: User['role'] }> = [];
+  if (process.env.SHOW_DEMO_CREDENTIALS === 'true') {
+    for (const prefix of ['ADMIN', 'VIEWER']) {
+      const email = process.env[`${prefix}_EMAIL`]?.trim().toLowerCase();
+      const password = process.env[`${prefix}_PASSWORD`];
+      if (!email || !password) continue;
+      const user = await findUser(email);
+      // Environment updates do not rotate stored passwords; never display a stale credential.
+      if (user && (await verifyPassword(password, user.password_hash)))
+        demoAccounts.push({ email, password, role: user.role });
+    }
+  }
+  const demo: RequestHandler = (_req, res) => {
+    res.set('Cache-Control', 'no-store').json({ data: demoAccounts });
+  };
+
   const login = asyncHandler(async (req, res) => {
     const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
     const password = typeof req.body.password === 'string' ? req.body.password : '';
@@ -154,5 +171,5 @@ export async function createAuth(repos: AppRepositories) {
     else sessions.delete(res.locals.sessionId);
     res.clearCookie(cookieName, options).json({ success: true });
   });
-  return { login, requireUser, requireSupervisor, logout };
+  return { login, demo, requireUser, requireSupervisor, logout };
 }

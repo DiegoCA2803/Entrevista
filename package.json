@@ -16,9 +16,11 @@
     "test:watch": "vitest",
     "seed": "tsx backend/src/seeds/seed.ts",
     "setup": "node scripts/setup-env.mjs",
+    "setup:vercel": "node scripts/setup-vercel-env.mjs",
     "worker": "tsx backend/src/worker.ts",
     "notifications": "tsx backend/src/notification-sink.ts",
-    "test:integration": "node scripts/test-integration.mjs"
+    "test:integration": "node scripts/test-integration.mjs",
+    "test:evidence": "node scripts/test-evidence.mjs"
   },
   "keywords": [
     "mining",

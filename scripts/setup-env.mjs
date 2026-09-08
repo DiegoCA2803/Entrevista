@@ -19,6 +19,7 @@ ADMIN_NAME=Supervisor de operaciones
 VIEWER_EMAIL=consulta@minefleet.local
 VIEWER_PASSWORD=MineFleet.Consulta2026!
 SEED_DEMO=true
+SHOW_DEMO_CREDENTIALS=true
 COOKIE_SECURE=false
 METRICS_TOKEN=${secret()}
 WEBHOOK_SECRET=${secret()}

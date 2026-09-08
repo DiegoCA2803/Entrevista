@@ -98,6 +98,19 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
+  const [demoAccounts, setDemoAccounts] = useState<Awaited<ReturnType<typeof api.getDemoAccounts>>>([]);
+  useEffect(() => {
+    let active = true;
+    api
+      .getDemoAccounts()
+      .then((accounts) => {
+        if (active) setDemoAccounts(accounts);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
   return (
     <div className="login-page">
       <section className="login-story">
@@ -182,6 +195,36 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
               <ArrowRight size={18} />
             </button>
           </form>
+          {demoAccounts.length > 0 && (
+            <aside className="login-demo" aria-label="Credenciales de demostración">
+              <strong>Prueba MineFleet</strong>
+              <p>Elige una cuenta de demostración para explorar la aplicación.</p>
+              {demoAccounts.map((account) => (
+                <div className="login-demo-account" key={account.email}>
+                  <span>
+                    {account.role === 'SUPERVISOR'
+                      ? 'Supervisor · puede registrar operaciones'
+                      : 'Consulta · solo lectura'}
+                  </span>
+                  <code>{account.email}</code>
+                  <code>{account.password}</code>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      setEmail(account.email);
+                      setPassword(account.password);
+                      setError(undefined);
+                    }}
+                  >
+                    Usar cuenta {account.role === 'SUPERVISOR' ? 'Supervisor' : 'Consulta'}
+                    <ArrowRight size={15} />
+                  </button>
+                </div>
+              ))}
+            </aside>
+          )}
           <div className="login-security">
             <ShieldCheck size={16} /> Acceso seguro · Sesión protegida
           </div>

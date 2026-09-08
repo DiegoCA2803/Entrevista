@@ -12,7 +12,12 @@ try {
   base.pathname = `/${dbName}`;
   const result = spawnSync(
     process.execPath,
-    ['node_modules/vitest/vitest.mjs', 'run', 'backend/src/tests/postgres.integration.test.ts'],
+    [
+      'node_modules/vitest/vitest.mjs',
+      'run',
+      'backend/src/tests/postgres.integration.test.ts',
+      ...process.argv.slice(2)
+    ],
     {
       stdio: 'inherit',
       env: { ...process.env, TEST_DATABASE_URL: base.toString(), NODE_ENV: 'test', SEED_DEMO: 'false' }

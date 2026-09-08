@@ -2,14 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "framework": null,
-  "installCommand": "npm ci && npm ci --prefix frontend",
-  "buildCommand": "npm run build",
-  "outputDirectory": "frontend/dist",
-  "functions": { "api/index.js": { "maxDuration": 60, "includeFiles": "backend/dist/**" } },
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api" },
-    { "source": "/metrics", "destination": "/api" },
-    { "source": "/((?!api/|assets/|metrics).*)", "destination": "/index.html" }
-  ],
   "crons": [{ "path": "/api/cron/outbox", "schedule": "0 8 * * *" }]
 }

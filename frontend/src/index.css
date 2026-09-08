@@ -1700,6 +1700,40 @@ summary {
   font-size: 10px;
   margin-top: 23px;
 }
+.login-demo {
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 12px;
+}
+.login-demo > p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 5px;
+}
+.login-demo-account {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+}
+.login-demo-account > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.login-demo-account code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.login-demo-account .button {
+  justify-content: space-between;
+  margin-top: 5px;
+  padding: 8px 10px;
+  font-size: 10px;
+}
 .login-form-area > footer {
   position: absolute;
   bottom: 37px;

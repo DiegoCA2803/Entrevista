@@ -8,3 +8,5 @@ frontend/dist
 artifacts
 *.log
 monitoring
+api
+docker-compose.yml
