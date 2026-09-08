@@ -2,9 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "framework": null,
-  "installCommand": "npm ci --include=dev && npm ci --include=dev --prefix frontend",
   "services": {
-    "app": { "root": ".", "entrypoint": "Dockerfile.vercel" }
+    "app": {
+      "root": ".",
+      "entrypoint": "Dockerfile.vercel",
+      "installCommand": "npm ci --include=dev && npm ci --include=dev --prefix frontend"
+    }
   },
   "rewrites": [{ "source": "/(.*)", "destination": { "service": "app" } }],
   "crons": [{ "path": "/api/cron/outbox", "schedule": "0 8 * * *" }]
