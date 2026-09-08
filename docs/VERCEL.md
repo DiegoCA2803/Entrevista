@@ -95,6 +95,8 @@ El cron diario corresponde a los [límites de Hobby](https://vercel.com/docs/cro
 
 ## Si algo falla
 
+Si aparecen errores `Cannot find module 'react'` o `react/jsx-runtime`, comprueba que estás desplegando la última versión de `vercel.json`: instala las dependencias de raíz y frontend con `--include=dev`, y declara el servicio `app` con `Dockerfile.vercel` como entrada. Elimina las sobrescrituras antiguas de Build/Install/Output en Settings y vuelve a desplegar el commit actualizado sin caché. La configuración explícita sigue la [documentación de servicios con contenedores](https://vercel.com/docs/functions/container-images).
+
 | Síntoma                                  | Revisión                                                                                              |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | Pide `frontend/dist` o no detecta Docker | Confirma commit, raíz `./`, `Dockerfile.vercel` y elimina las sobrescrituras de build/output antiguas |
